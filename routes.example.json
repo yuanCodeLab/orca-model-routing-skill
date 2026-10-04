@@ -1,0 +1,37 @@
+{
+  "_comment": "Example template only: replace every illustrative value and review policy before use.",
+  "decision_mode": "rules_only",
+  "models": {
+    "profile_a": {"agent": "codex", "model": "replace-with-model-id-a", "effort": "medium", "hard_effort": "high", "enabled": true},
+    "profile_b": {"agent": "claude", "model": "replace-with-model-id-b", "effort": "medium", "hard_effort": "high", "enabled": true}
+  },
+  "tasks": {
+    "feature": {"primary": "profile_a", "alternate": "profile_b", "effort": "medium", "description": "Implement a feature"},
+    "bugfix": {"primary": "profile_a", "alternate": "profile_b", "effort": "medium", "description": "Fix a defined defect"},
+    "review": {"primary": "profile_a", "alternate": "profile_b", "effort": "medium", "read_only": true, "description": "Review code"},
+    "architecture": {"primary": "profile_a", "alternate": "profile_b", "effort": "medium", "read_only": true, "description": "Analyze architecture"},
+    "complex": {"primary": "profile_a", "alternate": "profile_b", "effort": "low", "hard_effort": "high", "description": "Investigate a complex issue"},
+    "bounded": {"primary": "profile_a", "alternate": "profile_b", "effort": "high", "description": "Complete a bounded implementation"},
+    "mechanical": {"primary": "profile_a", "alternate": "profile_b", "effort": "low", "description": "Make a mechanical edit"}
+  },
+  "explicit_overrides": {"allowed_efforts": ["low", "medium", "high", "xhigh"]},
+  "jev": {"enabled": false, "model": "jev-latest", "min_confidence": 0.5},
+  "quota_policy": {
+    "enabled": true,
+    "source": {"command": ["orca", "account", "list", "--json"], "timeout_seconds": 10, "max_output_bytes": 2097152},
+    "stale_after_seconds": 300,
+    "max_future_skew_seconds": 60,
+    "provider_keys": {"codex": "codex", "claude": "claude", "antigravity": "antigravity"},
+    "capacity_factors": {"codex": 1, "claude": 1, "antigravity": 1},
+    "reserves": {},
+    "unknown_policy": {"primary_without_reserve": "block"},
+    "windows": {
+      "session": {"expected_minutes": 300, "time_floor_minutes": 10, "weight": 0.5},
+      "weekly": {"expected_minutes": 10080, "time_floor_minutes": 60, "weight": 0.5}
+    },
+    "task_budget_points": {
+      "normal": {"session": 2, "weekly": 5},
+      "hard": {"session": 2, "weekly": 5}
+    }
+  }
+}

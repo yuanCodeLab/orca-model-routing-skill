@@ -1,0 +1,13 @@
+routes.json
+*.key
+*.pem
+*credentials*.json
+*secret*.json
+*status*.json
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+.audit_tmp/
