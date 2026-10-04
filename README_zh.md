@@ -77,9 +77,36 @@ flowchart LR
 
 ---
 
-## 日常使用：任务派发提示词
+## 如何使用本 Skill
 
-在日常开发中，当你有一个具体需求想让 Agent 执行时，**请勿直接让它按默认模型派发**（容易迅速耗尽单一模型额度）。直接复制并修改以下提示词发送给你的主 Agent：
+本 Skill 支持两种使用方式：**自动模式（优先推荐）** 和 **手动模式**。
+
+### 1. 自动模式（优先推荐，免手动提示词）
+
+在全局规则中配置本 Skill 的调度策略后，提出任何开发任务时 Agent 均会**默认优先自动执行**配额感知路由，无需每次重复输入提示词。
+
+> **前提**：先将本目录软链接到全局技能目录（让 Orca/Agent 启动时自动加载）：  
+> `ln -s /path/to/orca-model-routing-skill ~/.agents/skills/orca-model-routing`
+
+可通过以下 **3 种方式之一** 配置全局规则：
+1. **Orca 客户端全局设置（图形界面最直接）**：打开 Orca 桌面端 $\rightarrow$ **Settings** $\rightarrow$ **Agent Rules / Instructions**，粘贴下方规则模板。
+2. **Agent 全局指令文件（底层跨工具永久生效）**：写入当前底层 Agent 全局指令文件（如 Claude 写入 `~/.claude/CLAUDE.md`，Codex 写入全局配置）。
+3. **项目级规则文件（按项目仓库独立生效）**：在具体项目根目录下创建或编辑 `AGENTS.md`（或 `CLAUDE.md`）并粘贴下方规则模板。
+
+**可直接复制的调度规则模板：**
+```markdown
+[Worker 派发策略]
+派发开发任务时，必须优先调用 orca-model-routing 执行两阶段调度：
+1. 先运行 `scripts/route.py plan` 评估账户实时配额并展示选中的模型；
+2. 经确认后运行 `scripts/route.py start` 启动匹配的模型 worker；
+严禁绕过配额检查直接使用默认模型派发。
+```
+
+---
+
+### 2. 手动模式（用手动提示词）
+
+若未配置全局规则，或希望在单次会话中显式控制调度，直接复制以下提示词发送给你的主 Agent：
 
 ```text
 我有一个开发任务需要处理：

@@ -77,9 +77,36 @@ Please help me install and configure the Orca Model Routing Skill:
 
 ---
 
-## Daily Usage: Task Dispatch Prompt
+## How to Use This Skill
 
-In everyday development, when you want your Agent to execute a concrete task, **do not let it dispatch with default models** (which may rapidly deplete a single model's quota). Copy and send this prompt to your coordinator Agent:
+This Skill supports two usage modes: **Auto Mode (Recommended)** and **Manual Mode**.
+
+### 1. Auto Mode (Recommended, Zero-Prompt)
+
+Once configured globally, your Agent will **automatically invoke quota-aware routing by default** whenever given a development task, without needing prompt templates each time.
+
+> **Prerequisite**: Symlink this repository to the global skills directory (so Orca/Agent auto-discovers it on startup):  
+> `ln -s /path/to/orca-model-routing-skill ~/.agents/skills/orca-model-routing`
+
+Configure via one of the following **3 methods**:
+1. **Orca Client Settings (GUI / Direct)**: Open Orca $\rightarrow$ **Settings** $\rightarrow$ **Agent Rules / Instructions**, paste the dispatch rule template below.
+2. **Agent Global Instructions (Cross-Tool Persistent)**: Add the rule below to your agent's global instruction file (e.g. `~/.claude/CLAUDE.md` for Claude, or global config for Codex).
+3. **Project-Level Rule (Per-Repository)**: Add the rule below to `AGENTS.md` (or `CLAUDE.md`) in your project root.
+
+**Dispatch Rule Template to Copy:**
+```markdown
+[Worker Dispatch Policy]
+When dispatching a worker for development tasks, always use `orca-model-routing` for two-stage scheduling:
+1. Run `scripts/route.py plan` to evaluate live account quotas and report the selected profile;
+2. After review, run `scripts/route.py start` to launch the matched worker;
+Never bypass quota checks to dispatch with default models directly.
+```
+
+---
+
+### 2. Manual Mode (One-Off Prompt)
+
+If global rules are not configured, or if you prefer explicit control for a specific task, copy and send this prompt to your coordinator Agent:
 
 ```text
 I have a development task to execute:
