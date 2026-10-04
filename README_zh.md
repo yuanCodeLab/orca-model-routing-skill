@@ -211,6 +211,23 @@ flowchart LR
 | mechanical | GPT-6 Luna（low） | Claude Sonnet 5.5（low） | 速度快（约 130 t/s），几乎不花钱 |
 | browser | Gemini 3.8 Flash High | Claude Sonnet 5.5（high，能力未确认） | 目前最快的可用 Gemini；agent 指标偏弱，仅用于简单页面验证 |
 
+**该配对使用的容量系数**：`"capacity_factors": {"codex": 1, "claude": 1.5, "antigravity": 3}`
+
+按作者的使用体感，同样 1% 的订阅额度，Claude 比 Codex 更耐用，所以给 Claude 1.5 倍权重。这是日常使用的经验，**并未实测**；两家都没有公布 1% 额度对应多少 token。模板中所有系数都保持为 `1`。
+
+由于每个任务的主备都跨账户池，这个系数会影响每一个任务的选择。结合 Claude 池 session 20 / weekly 10 的预留，以 `feature`（主选 Sol / 备选 Sonnet）为例，两个池用量相同时：
+
+| `claude` 系数 | 两池用量都达到多少后，主选（Codex）胜出 |
+| :--- | :--- |
+| 1 | 0%（用量相同时总是主选） |
+| 1.2 | 约 15% |
+| **1.5** | **约 57%** |
+| 2 | 约 71% |
+
+也就是说，取 `1.5` 时，两边额度都还充足时大多数任务会交给 Claude 备选；Claude 接近预留线后，才回到 Codex 主选。如果发现 Claude 池总比 Codex 先见底，或主调度经常因为预留被阻断，就把系数调低。
+
+校准方法：任务前后各记录一次该池的 `usedPercent`（来自 `orca account list --json`），按任务类型求每个任务平均消耗的百分点，系数 ≈ Codex 每任务消耗 ÷ Claude 每任务消耗。用量按整数百分比显示，所以至少积累十来个任务再取平均，测量期间一次只跑一个任务，最好看 5 小时的 session 窗口。
+
 注意事项：
 - Arena 主要测 high/max 档，low/medium 档的选择依据来自 Artificial Analysis。
 - 两个来源都没有说明结果出自哪种工具链（Codex CLI、Claude Code 等）。

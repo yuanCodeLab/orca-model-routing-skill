@@ -213,6 +213,23 @@ Illustration only, from the author's setup. Use your own available models and re
 | mechanical | GPT-6 Luna (low) | Claude Sonnet 5.5 (low) | Fast (~130 t/s) and nearly free |
 | browser | Gemini 3.8 Flash High | Claude Sonnet 5.5 (high, capability unconfirmed) | Fastest available Gemini; weak agent signals, so simple checks only |
 
+**Capacity factors used with this pairing:** `"capacity_factors": {"codex": 1, "claude": 1.5, "antigravity": 3}`
+
+In the author's experience, the same 1% of Claude subscription quota lasts longer than 1% of Codex quota, so Claude is weighted 1.5×. This comes from day-to-day use and has **not been measured**; neither vendor publishes how many tokens 1% represents. The template keeps every factor at `1`.
+
+Because every pair crosses pools, this factor affects every task. Combined with a Claude reserve of session 20 / weekly 10, the effect for `feature` (primary Sol / alternate Sonnet) when both pools show the same usage is:
+
+| `claude` factor | Primary (Codex) wins once both pools have used at least |
+| :--- | :--- |
+| 1 | 0% (always, at equal usage) |
+| 1.2 | ~15% |
+| **1.5** | **~57%** |
+| 2 | ~71% |
+
+So with `1.5`, Claude alternates take most tasks while both pools are fresh, and Codex primaries take over as Claude approaches its reserve. If the Claude pool keeps running out before Codex, or the coordinator is often blocked by the reserve, lower the factor.
+
+To calibrate: record each pool's `usedPercent` (from `orca account list --json`) before and after tasks, average the points consumed per task kind, and set the factor ≈ Codex points per task ÷ Claude points per task. Usage is reported in whole percent, so average over at least ten or so tasks, run one at a time, preferably on the 5-hour session window.
+
 Caveats: Arena mostly measures high/max effort, so low/medium choices rely on Artificial Analysis. Neither source states which harness (Codex CLI, Claude Code, …) produced the results. Top-5 differences in Arena Agent overlap within confidence intervals. API prices are only a proxy for subscription quota. The most reliable calibration is your own success rate and quota use per task.
 
 ---
