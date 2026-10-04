@@ -12,9 +12,9 @@ from urllib import error, request
 CONFIG_HOME = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config'))
 PRIVATE_DIR = CONFIG_HOME / 'orca-model-routing'
 CREDENTIALS = PRIVATE_DIR / 'jev-credentials.json'
+# Only TypeSafe keys are supported: the classifier calls the TypeSafe Jev API.
 ENDPOINTS = {
     'typesafe': 'https://api.typesafe.ai/v1/models',
-    'openrouter': 'https://openrouter.ai/api/v1/key',
 }
 
 
@@ -38,16 +38,10 @@ def verify(provider, key):
         raise ValueError('认证检查返回 HTTP %s；未显示服务端正文。' % exc.code) from None
     except (error.URLError, TimeoutError, OSError, json.JSONDecodeError):
         raise ValueError('认证检查连接失败或响应格式异常；未显示任何凭据。') from None
-    if provider == 'typesafe':
-        names = [m.get('name', '') for m in data.get('models', []) if isinstance(m, dict)]
-        if not any(n.startswith('jev') for n in names):
-            raise ValueError('模型目录未返回 Jev；不能确认该 Key 有可用的 Jev 访问。')
-        return {'authentication_verified': True, 'jev_catalog_available': True}
-    if not isinstance(data.get('data'), dict):
-        raise ValueError('API Key 检查响应异常。')
-    if data['data'].get('is_management_key') or data['data'].get('is_provisioning_key'):
-        raise ValueError('这是管理 Key，请使用可调用模型的普通 API Key。')
-    return {'authentication_verified': True, 'jev_inference_verified': False}
+    names = [m.get('name', '') for m in data.get('models', []) if isinstance(m, dict)]
+    if not any(n.startswith('jev') for n in names):
+        raise ValueError('模型目录未返回 Jev；不能确认该 Key 有可用的 Jev 访问。')
+    return {'authentication_verified': True, 'jev_catalog_available': True}
 
 
 def save_private(path, value):
@@ -76,18 +70,16 @@ def main():
             print('尚未保存 Jev API Key。')
             return 1
         stored = json.loads(CREDENTIALS.read_text())
-        provider, key = stored['provider'], stored['api_key']
+        provider, key = stored.get('provider'), stored.get('api_key')
+        if provider not in ENDPOINTS or not key:
+            print('已保存的凭据不是 TypeSafe Key；请重新运行本脚本配置。')
+            return 1
     else:
         if not sys.stdin.isatty():
             print('请在本机交互终端运行；拒绝回显或通过参数接收 Key。')
             return 2
-        print('Jev API Key 配置（仅配置凭据，不启用自动路由）')
-        print('1 = TypeSafe 官方 Key；2 = OpenRouter Key')
-        selected = input('请选择来源 [默认 1]：').strip() or '1'
-        if selected not in ['1', '2']:
-            print('未选择有效来源，配置已取消。')
-            return 2
-        provider = {'1': 'typesafe', '2': 'openrouter'}[selected]
+        print('Jev API Key 配置（仅配置 TypeSafe 凭据，不启用自动路由）')
+        provider = 'typesafe'
         key = getpass.getpass('粘贴 API Key 后回车（输入隐藏）：').strip()
         if not key or any(c.isspace() for c in key):
             print('Key 为空或含空白，未保存。')

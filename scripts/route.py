@@ -160,7 +160,8 @@ def main():
     config = load_config()  # reread on every invocation
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['plan', 'start'])
-    parser.add_argument('--kind', choices=['auto'] + list(config['tasks']), default='auto')
+    parser.add_argument('--kind', choices=['auto'] + list(config['tasks']), required=True,
+                        help='task kind; auto needs Jev enabled and --spec-file')
     parser.add_argument('--complexity', choices=['normal', 'hard'], default=None)
     parser.add_argument('--profile', choices=list(config['models']), default=None,
                         help='explicit model profile; still subject to reserve and budget')

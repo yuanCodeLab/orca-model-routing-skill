@@ -1,29 +1,293 @@
 # Orca Model Routing
 
-An open-source Orca skill and command-line helper for routing a task between its configured primary and alternate worker profiles. It can classify a task with Jev, compare current quota windows, explain a plan, and start a worker through Orca. Routing configuration is a template: model IDs, capability flags, budgets, and capacity weights must be reviewed for your environment.
+[English](README.md) | [中文版](README_zh.md)
 
-## Requirements
+An open-source **Agent Skill** for [Orca](https://github.com/stablyai/orca) that routes each task to one worker profile, choosing between the task's configured primary and alternate profiles based on live Orca account quota.
 
-- Python 3.10 or later; the scripts use only the Python standard library.
-- Orca CLI installed and available on `PATH` for quota reads and worker starts.
-- Optional: a TypeSafe API key for Jev classification. Jev is disabled by default.
+Orca is a local multi-agent orchestration host: it manages Claude / Codex / other agent accounts, creates orchestration Runs, and starts supervised workers (`orca orchestration worker-start`). This skill sits in front of that call and decides *which* profile to start.
 
-## Setup
+```mermaid
+flowchart LR
+    Task["Task Spec<br>(Natural Language)"] --> Classify{"Determine Task Kind"}
 
-1. Clone or copy this directory and review `routes.example.json`.
-2. Set model IDs, enabled profiles, task mappings, quota budgets, and any reserve values to match your own policy. The checked-in file is an example, not a recommendation.
-3. Optionally create a checkout-local private override: `cp routes.example.json routes.json`. This file is ignored by Git. If it is absent, the scripts load `routes.example.json` automatically.
-4. Use `python3 scripts/route.py plan --kind feature --complexity normal --spec-file /path/to/task.txt` to review a plan. A plan does not launch a worker.
-5. For Jev, run `python3 scripts/setup_jev.py` in an interactive terminal. The API key and setup status are stored in the private user config directory, separately from routing files. Enable Jev in your private config only after reviewing the implications.
+    Classify -->|"Coordinator Agent passes --kind<br>(Default, Zero Extra Cost)"| Routes["Load routes.json<br>(falls back to routes.example.json)<br>Get Primary & Alternate"]
+    Classify -->|"Jev Auto-Classifies<br>(Optional, --kind auto)"| Routes
 
-Starting a worker requires an existing Orca Run and an explicit reviewed plan. Use `python3 scripts/route.py start` with `--run`, `--spec-file`, and `--expected-profile`; see `python3 scripts/route.py --help` for options. The tool refuses to start if a fresh quota check changes the selected profile.
+    subgraph PlanStep ["route.py plan"]
+        Routes --> QuotaCheck{"Read Live Quota<br>Check Reserve & Budget"}
+        Quota[(orca account list<br>read-only)] -.-> QuotaCheck
+        QuotaCheck -->|"Primary OK & scores ≥ Alternate"| Primary["Primary Profile"]
+        QuotaCheck -->|"Primary short, or<br>Alternate scores higher"| Alternate["Alternate Profile"]
+        QuotaCheck -->|"Quota unknown / both short<br>/ invalid config"| Blocked["Blocked<br>Hand back to coordinator"]
+    end
 
-## Configuration and privacy
+    Primary --> Review["Coordinator / User Reviews Plan"]
+    Alternate --> Review
+    Review --> Start["route.py start --expected-profile<br>(re-checks quota; refuses if the selection changed)"]
+```
 
-Never commit keys, credentials, status files, live quota snapshots, or local `routes.json`. The quota reader requests Orca account rate-limit data at runtime, reduces it to routing fields, and does not retain account identities or raw receipts. Keep actual quota policy and credentials in local configuration outside version control.
+> A quota-based alternate is an **initial selection**, not a retry after failure. The scripts never retry, switch accounts, or launch anything during `plan`.
 
-The routing helper does not install a background service or intercept ordinary Orca chats. It runs only when invoked.
+---
+
+## Quick Start
+
+### Mode 1: Ask an Agent (Recommended)
+
+Copy and send this prompt to your AI Agent:
+
+```text
+Please help me install and configure the Orca Model Routing Skill:
+1. If not already cloned, clone the repository: `git clone https://github.com/yuanCodeLab/orca-model-routing-skill.git` and enter the directory.
+2. Inspect `SKILL.md`, `README.md`, and `routes.example.json`.
+3. Guide me to create a local `routes.json` with my real model IDs, task mappings, reserves, and quota budgets (the example values are placeholders).
+4. Verify that `orca` is on PATH and signed in, then run a test plan: `python3 scripts/route.py plan --kind feature --complexity normal`, and explain the output to me.
+```
+
+---
+
+### Mode 2: Manual Setup
+
+1. **Clone Repository**:
+   ```sh
+   git clone https://github.com/yuanCodeLab/orca-model-routing-skill.git
+   cd orca-model-routing-skill
+   ```
+   *(Or copy/link this folder into your host's skills directory, e.g. `~/.claude/skills/orca-model-routing`)*
+
+2. **Configure Routes**: Copy the template and replace every placeholder (see [Configuration Reference](#configuration-reference)):
+   ```sh
+   cp routes.example.json routes.json
+   ```
+   `routes.json` is Git-ignored. If it is absent, the scripts load `routes.example.json`, whose model IDs (`replace-with-model-id-a`) are placeholders and are **not** a recommendation.
+
+3. **Review a Plan** (never launches a worker):
+   ```sh
+   python3 scripts/route.py plan --kind feature --complexity normal --spec-file /path/to/task.txt
+   ```
+   `--kind` is required. `--spec-file` is optional for `plan` unless you use `--kind auto`.
+
+4. **Start a Worker** (after plan review). You need an existing Orca Run; the script never creates one:
+   ```sh
+   orca orchestration run-create --objective "Fix login validation" --json   # note the Run ID
+   python3 scripts/route.py start --run <RUN_ID> --kind feature --complexity normal \
+     --spec-file /path/to/task.txt --expected-profile <PROFILE_FROM_PLAN>
+   ```
+   `start` re-reads quota. If the fresh selection differs from `--expected-profile`, it refuses to launch (exit code `3`) so the coordinator can review again.
+
+---
+
+## Daily Usage: Task Dispatch Prompt
+
+In everyday development, when you want your Agent to execute a concrete task, **do not let it dispatch with default models** (which may rapidly deplete a single model's quota). Copy and send this prompt to your coordinator Agent:
+
+```text
+I have a development task to execute:
+[Task Description]: [Describe your task here, e.g. Fix phone number format validation on the login page and add unit tests]
+
+Please route this task using orca-model-routing in `[your-actual-install-path]`:
+1. Write the task description and observable acceptance criteria into a spec file.
+2. Analyze the task kind (e.g. feature/bugfix/review) and complexity (normal/hard).
+3. Run `python3 <actual-path>/scripts/route.py plan --kind <kind> --complexity <complexity> --spec-file <spec-file>` to check live quota and generate a routing plan.
+4. Show me the plan: live quota windows, the selected profile, and any blocked reason. If it is blocked (exit code 2), stop and ask me; do not pick a model yourself.
+5. After I approve, use the current Orca Run (or create one with `orca orchestration run-create`), then run
+   `python3 <actual-path>/scripts/route.py start --run <RUN_ID> --kind <kind> --complexity <complexity> --spec-file <spec-file> --expected-profile <profile-from-plan>`.
+   If it exits with code 3 (selection changed), show me the new plan instead of retrying.
+6. Verify the worker's completion through Orca's lifecycle tools; a successful start alone is not completion.
+```
+
+---
+
+## Reading the Plan Output
+
+`plan` prints JSON. The fields that matter most:
+
+| Field | Meaning |
+| :--- | :--- |
+| `launchable` | `true` if a profile was selected and `start` would launch it |
+| `plan.profile` / `plan.model` | Selected profile, or `null` when blocked |
+| `plan.selection_reason` | Why this profile won (score comparison, primary short, etc.) |
+| `blocked_reason` / `plan.blocked_code` | Why nothing was selected (see below) |
+| `quota.candidates[].windows` | Per-window remaining, reserve, available, budget, minutes to reset |
+| `explain` | Plain-text description of the scoring rules |
+
+| `blocked_code` | Meaning |
+| :--- | :--- |
+| `quota_unknown` | Quota could not be verified (query failed, stale, malformed, window mismatch). Not treated as 0 or 100 |
+| `quota_insufficient` | Verified available quota is below the task budget for every usable candidate |
+| `capability_unconfirmed` | The alternate is eligible but its required tools/account capability is not confirmed |
+| `no_candidate` | Profile disabled or has no model ID |
+| `policy_invalid` | `quota_policy` in your config is invalid |
+| `effort_unsupported` | `--effort` passed to a profile whose effort is embedded in the model ID |
+
+| Exit code | Meaning |
+| :--- | :--- |
+| `0` | Plan launchable / worker start returned success |
+| `2` | Blocked, invalid arguments, or Jev needs the coordinator |
+| `3` | `start` only: fresh quota changed the selection vs. `--expected-profile` |
+
+> Script messages (`reasons`, `explain`, errors) are currently in **Chinese**.
+
+**Common case:** `quota_unknown` with `额度数据过期` means Orca's cached quota is older than `stale_after_seconds`. Open Orca so it refreshes account usage, then re-run `plan`.
+
+---
+
+## Configuration Reference
+
+All settings live in `routes.json` (or the example template). They are reread on every invocation.
+
+| Key | Purpose |
+| :--- | :--- |
+| `models.<profile>` | `agent` (Orca agent: `codex`, `claude`, …), `model` (model ID), `effort` / `hard_effort` (reasoning effort for normal / hard tasks; omit both when effort is embedded in the model ID), `enabled` |
+| `tasks.<kind>` | `primary` and `alternate` profile names, `effort`, `description` (used as the worker task title), optional `read_only: true` (worker told not to edit files) |
+| `tasks.<kind>.alternate_capability_confirmed` | Set `false` when the alternate has not been verified to have the tools the task needs (e.g. browser). It then can never be auto-selected |
+| `explicit_overrides.allowed_efforts` | Values accepted by `--effort` |
+| `quota_policy.reserves` | Per-agent hard reserve in percentage points, e.g. `{"claude": {"session": 20, "weekly": 30}}`. Never dispatched into, even close to reset |
+| `quota_policy.task_budget_points` | Minimum available points per window a candidate needs for `normal` / `hard` tasks. Overridable with `--budget-session` / `--budget-weekly` |
+| `quota_policy.capacity_factors` | Relative weight per agent for scoring. Illustrative only, not measured token capacity |
+| `quota_policy.windows` | Expected window length, time floor, and weight for `session` and `weekly` |
+| `quota_policy.unknown_policy.primary_without_reserve` | `block` (default) or `allow`: whether an unknown-quota primary without a reserve may still launch |
+| `quota_policy.stale_after_seconds` | Quota data older than this is treated as unknown |
+| `jev` | Optional auto-classification; see below |
+
+**Tip:** Put a task's primary and alternate in **different account pools** (different `agent`). Two profiles in the same pool read the same quota, so the comparison always keeps the primary, and when the primary is short the alternate is short too; quota switching never takes effect.
+
+Example values (budgets, factors, weights) are illustrative and not calibrated recommendations.
+
+---
+
+## Choosing Models per Task (Reference)
+
+The template ships with placeholder profiles. To pick real models for each task kind, the author used two public leaderboards. Rankings change often, so re-check them before updating your `routes.json`.
+
+### Sources and the Dimensions Used
+
+**[Artificial Analysis](https://artificialanalysis.ai/leaderboards/models)**: benchmark-based, reported **per reasoning effort** (low / medium / high / xhigh / max)
+
+| Dimension | What it tells you | Used for |
+| :--- | :--- | :--- |
+| Intelligence Index | Composite of ~10 evals (Terminal-Bench, SciCode, GDPval, Humanity's Last Exam, …) | Capability at the **exact effort level** you configure; scores drop sharply at lower effort for some models |
+| Price (blended $/1M tokens) | Relative cost per token | Spotting dominated options (same score, several times the cost) |
+| Output speed (tokens/s) | Latency | Favoring fast models for mechanical or browser tasks |
+| Coding Agent Index | Model + harness on DeepSWE, Terminal-Bench, SWE-Atlas | Most relevant, but behind a paywall at the time of writing; not used |
+
+**[Arena](https://arena.ai/leaderboard)**: human-preference and real-session data, mostly at high/max effort
+
+| Leaderboard / dimension | What it tells you | Used for |
+| :--- | :--- | :--- |
+| [Agent](https://arena.ai/leaderboard/agent): Net Improvement | Overall gain over baseline in real agentic sessions | Overall agent strength |
+| Agent: Cost per task, Output tokens | Real spend and verbosity per task | Estimating quota burn (e.g. very verbose models drain quota fast) |
+| Agent: Confirmed Success | User-confirmed task completion | Implementing from a clear spec (feature, bounded) |
+| Agent: Bash Recovery | Recovering after command errors | Debugging and bug fixing (bugfix, complex) |
+| Agent: Steerability | Accepting user corrections | Long interactive tasks, browser flows |
+| Agent: Tool Hallucination | Inventing tools that do not exist | Reliability of tool-heavy tasks |
+| Agent: Praise vs Complaint | Ratio of positive to negative user reactions | Tie-breaker |
+| [WebDev](https://arena.ai/leaderboard/code/webdev) Elo | Preference for generated web apps | Front-end feature work |
+| [Text → Coding](https://arena.ai/leaderboard/text/coding) Elo | Chat-style coding preference | Weak signal; top models sit within each other's confidence intervals |
+
+### What Each Task Kind Needs
+
+| Task kind | Key dimensions | Guidance |
+| :--- | :--- | :--- |
+| `feature` | Confirmed Success, cost per task | A cost-efficient model at medium effort; alternate at a comparable score level |
+| `bugfix` | Bash Recovery, Intelligence at the chosen effort | A model that recovers well from failing commands; avoid low effort |
+| `review` (read-only) | Intelligence, Praise vs Complaint | A strong model at medium/high effort, preferably a different family from the implementer |
+| `architecture` (read-only) | Intelligence at high effort | Low-volume, high-value; spend effort here |
+| `complex` | Net Improvement, Bash Recovery, Intelligence at high effort | Your strongest agent model at high effort; do not start at low |
+| `bounded` | Intelligence vs. price | A cheap but capable tier; very small models fail logic and cost more in retries |
+| `mechanical` | Speed, price | The fastest, cheapest model is fine |
+| `browser` | Steerability, Bash Recovery, Tool Hallucination, speed | Verify tool access first; weak agent models suit only simple page checks |
+
+### Example Pairing (snapshot, 2026-10)
+
+Illustration only, from the author's setup. Use your own available models and re-check the leaderboards.
+
+| Task | Primary | Alternate | Main reason |
+| :--- | :--- | :--- | :--- |
+| feature | GPT-6.1 Sol (medium) | Claude Sonnet 5.5 (high) | Sol: best intelligence per dollar and highest Confirmed Success |
+| bugfix | Claude Sonnet 5.5 (high) | GPT-6.1 Sol (medium) | Sonnet Bash Recovery 15.1 vs Sol 3.5; Sonnet drops sharply at medium (AA 41) |
+| review | Claude Opus 5.5 (medium) | GPT-6.1 Sol (high) | Opus medium (AA 51) beats Sonnet high (47) at similar cost |
+| architecture | Claude Opus 5.5 (high) | GPT-6.1 Sol (xhigh) | Opus high: Arena Agent #2 at $1.56/task |
+| complex | Claude Opus 5.5 (high) | GPT-6 Astra (high) | Opus high outranks Astra max at half the cost; Astra Bash Recovery 5.3 |
+| bounded | GPT-6.1 Sol (low) | Claude Sonnet 5.5 (medium) | Luna's Confirmed Success ≈ 0 in Arena Agent, so too weak for logic |
+| mechanical | GPT-6 Luna (low) | Claude Sonnet 5.5 (low) | Fast (~130 t/s) and nearly free |
+| browser | Gemini 3.8 Flash High | Claude Sonnet 5.5 (high, capability unconfirmed) | Fastest available Gemini; weak agent signals, so simple checks only |
+
+Caveats: Arena mostly measures high/max effort, so low/medium choices rely on Artificial Analysis. Neither source states which harness (Codex CLI, Claude Code, …) produced the results. Top-5 differences in Arena Agent overlap within confidence intervals. API prices are only a proxy for subscription quota. The most reliable calibration is your own success rate and quota use per task.
+
+---
+
+## How to Reload an Updated Skill
+
+If you modified the code or local configuration (e.g. updated `routes.json` or `SKILL.md`), use one of the following methods to ensure your Agent picks up the latest version:
+
+1. **Start a New Session / Run (Recommended)**:
+   Most host applications rescan and index local Skills upon starting a new session.
+2. **Prompt the Agent in Current Session (No Restart)**:
+   Send this prompt to your running Agent without exiting (replace the bracketed placeholder with your actual local path):
+   > "The skill in `[your-actual-install-path]` has been updated. Please reread `SKILL.md` in that directory and use `python3 scripts/route.py` from that path for routing."
+3. **Restart the Host Application**:
+   If the host caches skill metadata in a daemon or desktop process, fully restart the host application.
+4. **Run Directly in Terminal (Instant)**:
+   The scripts reread `routes.json` on every execution, so `python3 scripts/route.py plan --kind feature --complexity normal` always reflects the latest configuration.
+
+---
+
+## Prerequisites & Optional Setup
+
+| Item | Requirement | Notes |
+| :--- | :--- | :--- |
+| **Python** | 3.10+ | Uses standard library only |
+| **Orca CLI** | Required | Must be on `PATH` and signed in for quota reads and worker starts |
+| **Jev (Optional)** | TypeSafe API Key | Classifies task kind and complexity (`--kind auto`); requires a dedicated API key, incurs API costs, and sends the task spec to TypeSafe, so disabled by default. See below to enable |
+
+### Enable Jev (Optional)
+
+> **When to Enable?**
+> - **Not Needed (Recommended)**: Interactive development or orchestration by a coordinator Agent. The main Agent can already classify whether a task is a `feature` or `bugfix` and pass `--kind <type>` directly, avoiding extra API keys, costs, latency, and sending task text to a third party.
+> - **Recommended**: Headless, unattended automation pipelines (e.g. batch-processing raw tickets from GitHub Issues or Jira without an interactive coordinator Agent).
+
+> **Privacy:** With `--kind auto`, the **full task spec text** (up to 16,000 characters) is sent to `api.typesafe.ai`. Do not enable it for specs containing code or data you may not share with a third party.
+
+#### Option 1: Ask an Agent (Recommended)
+
+Copy and send this prompt to your AI Agent:
+
+```text
+Please help me enable and configure Jev automatic task classification:
+1. Ask me to run `python3 scripts/setup_jev.py` myself in an interactive terminal to configure my TypeSafe API Key (the key is entered in the terminal with hidden input, never shared in chat).
+2. Set `"enabled": true` under `"jev"` in my local `routes.json`.
+3. Test automatic classification by running `python3 scripts/route.py plan --kind auto --spec-file <task-file>`.
+```
+
+#### Option 2: Manual Setup
+
+1. **Configure API Key** (hidden interactive prompt; verified against TypeSafe's model list, no inference call):
+   ```sh
+   python3 scripts/setup_jev.py          # save a key
+   python3 scripts/setup_jev.py --check  # re-verify the saved key
+   ```
+   The key is stored at `~/.config/orca-model-routing/jev-credentials.json` (mode `0600`; honors `XDG_CONFIG_HOME`), never in the repository.
+2. **Enable in `routes.json`**: Set `"enabled": true` under `"jev"`:
+   ```json
+   "jev": { "enabled": true, "model": "jev-latest", "min_confidence": 0.5 }
+   ```
+3. **Test Automatic Route**:
+   ```sh
+   python3 scripts/route.py plan --kind auto --spec-file /path/to/task.txt
+   ```
+
+If Jev's confidence is below `min_confidence`, or it answers `unmatched` (unclear or multiple independent tasks), the plan exits with code `2` and hands the decision back to the coordinator. Jev only chooses among task kinds defined in your config.
+
+---
+
+## Privacy & Security
+
+- **No Background Daemon**: Runs only when invoked; does not intercept normal chats.
+- **Local Credentials**: Never commit API keys, token caches, or `routes.json` (ignored by Git).
+- **Quota Privacy**: Quota is read with `orca account list --json` (read-only) and reduced to status, timestamps, and usage numbers; account identities and raw receipts are never stored or printed.
+- **Third-Party Calls**: Only with Jev enabled and `--kind auto` is task text sent outside your machine (to TypeSafe). Without Jev, nothing leaves your machine except what Orca itself does.
 
 ## License
 
-MIT; see [LICENSE](LICENSE).
+[MIT](LICENSE)

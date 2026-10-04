@@ -12,7 +12,8 @@
     "architecture": {"primary": "profile_a", "alternate": "profile_b", "effort": "medium", "read_only": true, "description": "Analyze architecture"},
     "complex": {"primary": "profile_a", "alternate": "profile_b", "effort": "low", "hard_effort": "high", "description": "Investigate a complex issue"},
     "bounded": {"primary": "profile_a", "alternate": "profile_b", "effort": "high", "description": "Complete a bounded implementation"},
-    "mechanical": {"primary": "profile_a", "alternate": "profile_b", "effort": "low", "description": "Make a mechanical edit"}
+    "mechanical": {"primary": "profile_a", "alternate": "profile_b", "effort": "low", "description": "Make a mechanical edit"},
+    "browser": {"primary": "profile_b", "alternate": "profile_a", "effort": "medium", "alternate_capability_confirmed": false, "description": "Verify page interactions with browser tools"}
   },
   "explicit_overrides": {"allowed_efforts": ["low", "medium", "high", "xhigh"]},
   "jev": {"enabled": false, "model": "jev-latest", "min_confidence": 0.5},

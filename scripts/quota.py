@@ -58,7 +58,7 @@ def validate_policy(policy):
         skew=_nonneg(policy.get('max_future_skew_seconds', 60), 'max_future_skew_seconds'),
         provider_keys=dict(policy.get('provider_keys') or {}),
         factors={}, reserves={}, windows={}, budgets={},
-        unknown_primary=(policy.get('unknown_policy') or {}).get('primary_without_reserve', 'allow'))
+        unknown_primary=(policy.get('unknown_policy') or {}).get('primary_without_reserve', 'block'))
     if out['stale'] <= 0:
         raise PolicyError('quota_policy.stale_after_seconds 必须为正。')
     if out['unknown_primary'] not in ('allow', 'block'):
