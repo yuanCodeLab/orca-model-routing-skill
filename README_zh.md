@@ -83,23 +83,31 @@ flowchart LR
 
 ### 1. 自动模式（优先推荐，免手动提示词）
 
-在全局规则中配置本 Skill 的调度策略后，提出任何开发任务时 Agent 均会**默认优先自动执行**配额感知路由，无需每次重复输入提示词。
+Skill 不会自己运行：Agent 只能看到它的名称和描述，判断请求匹配时才会调用。在 Agent 的指令文件里加一条派发规则，协调者每次派发 worker 时就会优先使用它，无需每次重复输入提示词。Agent 通常会遵守这类规则，但不是硬性保证；也没有任何后台进程拦截会话。
 
-> **前提**：先将本目录软链接到全局技能目录（让 Orca/Agent 启动时自动加载）：  
-> `ln -s /path/to/orca-model-routing-skill ~/.agents/skills/orca-model-routing`
+> **前提**：让你使用的每个 Agent 都能发现本 Skill。各 Agent 读取各自的技能目录：
+> ```sh
+> ln -s /path/to/orca-model-routing-skill ~/.agents/skills/orca-model-routing   # Agent Skills 通用目录
+> ln -s /path/to/orca-model-routing-skill ~/.claude/skills/orca-model-routing   # Claude Code
+> ln -s /path/to/orca-model-routing-skill ~/.codex/skills/orca-model-routing    # Codex
+> ```
+> 可用 `orca skills installed` 检查：对应条目应列出你链接过的 Agent。
 
-可通过以下 **3 种方式之一** 配置全局规则：
-1. **Orca 客户端全局设置（图形界面最直接）**：打开 Orca 桌面端 $\rightarrow$ **Settings** $\rightarrow$ **Agent Rules / Instructions**，粘贴下方规则模板。
-2. **Agent 全局指令文件（底层跨工具永久生效）**：写入当前底层 Agent 全局指令文件（如 Claude 写入 `~/.claude/CLAUDE.md`，Codex 写入全局配置）。
-3. **项目级规则文件（按项目仓库独立生效）**：在具体项目根目录下创建或编辑 `AGENTS.md`（或 `CLAUDE.md`）并粘贴下方规则模板。
+把下方规则写入以下**其中一处**：
+1. **Agent 全局指令文件**（对该 Agent 的所有会话生效）：Claude Code 写入 `~/.claude/CLAUDE.md`，Codex 写入 `~/.codex/AGENTS.md`。
+2. **项目级规则文件**（只对单个仓库生效）：项目根目录的 `AGENTS.md` 或 `CLAUDE.md`。
 
-**可直接复制的调度规则模板：**
+Orca 本身没有用于此的全局规则设置（已在 Orca 1.4.219 中核实），规则需写在 Agent 自己的指令文件里。
+
+**可直接复制的调度规则模板**（把 `<skill-dir>` 换成 Skill 的绝对安装路径）：
 ```markdown
 [Worker 派发策略]
-派发开发任务时，必须优先调用 orca-model-routing 执行两阶段调度：
-1. 先运行 `scripts/route.py plan` 评估账户实时配额并展示选中的模型；
-2. 经确认后运行 `scripts/route.py start` 启动匹配的模型 worker；
-严禁绕过配额检查直接使用默认模型派发。
+在 Orca 中协调并派发 worker 时，使用 orca-model-routing：
+1. 把任务内容与可观察的验收条件写入任务说明文件；判断任务类型（feature/bugfix/review/architecture/complex/bounded/mechanical/browser）与复杂度（normal/hard）。
+2. 执行 `python3 <skill-dir>/scripts/route.py plan --kind <类型> --complexity <复杂度> --spec-file <任务说明文件>`，汇报选中的档位与额度情况。
+3. 经确认后执行 `python3 <skill-dir>/scripts/route.py start --run <RUN_ID> --kind <类型> --complexity <复杂度> --spec-file <任务说明文件> --expected-profile <档位>`。
+4. 退出码为 2（被阻断）或 3（选择已变化）时停下来询问，不要自行换模型或重试。
+不得绕过额度检查直接用默认模型派发。本规则只适用于 Orca 中派发 worker，不影响普通对话。
 ```
 
 ---

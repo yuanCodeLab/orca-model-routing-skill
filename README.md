@@ -83,23 +83,31 @@ This Skill supports two usage modes: **Auto Mode (Recommended)** and **Manual Mo
 
 ### 1. Auto Mode (Recommended, Zero-Prompt)
 
-Once configured globally, your Agent will **automatically invoke quota-aware routing by default** whenever given a development task, without needing prompt templates each time.
+The skill is never executed on its own: agents only see its name and description, and invoke it when a request matches. A dispatch rule in your agent's instruction file tells the coordinator to use it for every worker dispatch, so you do not need the prompt template each time. Agents follow such rules reliably but not with a hard guarantee; nothing intercepts sessions in the background.
 
-> **Prerequisite**: Symlink this repository to the global skills directory (so Orca/Agent auto-discovers it on startup):  
-> `ln -s /path/to/orca-model-routing-skill ~/.agents/skills/orca-model-routing`
+> **Prerequisite**: make the skill discoverable by each agent you use. Each agent reads its own skills directory:
+> ```sh
+> ln -s /path/to/orca-model-routing-skill ~/.agents/skills/orca-model-routing   # Agent Skills standard
+> ln -s /path/to/orca-model-routing-skill ~/.claude/skills/orca-model-routing   # Claude Code
+> ln -s /path/to/orca-model-routing-skill ~/.codex/skills/orca-model-routing    # Codex
+> ```
+> Check with `orca skills installed`: the entry should list the providers you linked.
 
-Configure via one of the following **3 methods**:
-1. **Orca Client Settings (GUI / Direct)**: Open Orca $\rightarrow$ **Settings** $\rightarrow$ **Agent Rules / Instructions**, paste the dispatch rule template below.
-2. **Agent Global Instructions (Cross-Tool Persistent)**: Add the rule below to your agent's global instruction file (e.g. `~/.claude/CLAUDE.md` for Claude, or global config for Codex).
-3. **Project-Level Rule (Per-Repository)**: Add the rule below to `AGENTS.md` (or `CLAUDE.md`) in your project root.
+Add the rule below to **one** of:
+1. **Agent global instruction file** (applies to every session of that agent): `~/.claude/CLAUDE.md` for Claude Code, `~/.codex/AGENTS.md` for Codex.
+2. **Project-level rule file** (applies to one repository): `AGENTS.md` or `CLAUDE.md` in the project root.
 
-**Dispatch Rule Template to Copy:**
+Orca itself has no global rules setting for this (checked in Orca 1.4.219); the rule lives in the agent's own instruction files.
+
+**Dispatch Rule Template** (replace `<skill-dir>` with the absolute install path):
 ```markdown
 [Worker Dispatch Policy]
-When dispatching a worker for development tasks, always use `orca-model-routing` for two-stage scheduling:
-1. Run `scripts/route.py plan` to evaluate live account quotas and report the selected profile;
-2. After review, run `scripts/route.py start` to launch the matched worker;
-Never bypass quota checks to dispatch with default models directly.
+When coordinating in Orca and dispatching a worker, use orca-model-routing:
+1. Write the task and observable acceptance criteria to a spec file; decide the task kind (feature/bugfix/review/architecture/complex/bounded/mechanical/browser) and complexity (normal/hard).
+2. Run `python3 <skill-dir>/scripts/route.py plan --kind <kind> --complexity <complexity> --spec-file <spec-file>` and report the selected profile and quota.
+3. After approval, run `python3 <skill-dir>/scripts/route.py start --run <RUN_ID> --kind <kind> --complexity <complexity> --spec-file <spec-file> --expected-profile <profile>`.
+4. On exit code 2 (blocked) or 3 (selection changed), stop and ask; do not pick a model or retry on your own.
+Do not bypass the quota check by dispatching with default models. This applies only to Orca worker dispatch, not to ordinary chats.
 ```
 
 ---
