@@ -237,6 +237,8 @@ The template ships with placeholder profiles. To pick real models for each task 
 
 Illustration only, from the author's setup. Use your own available models and re-check the leaderboards.
 
+Updated 2026-10-08 for Claude Haiku 5.5 (`claude-haiku-5-5`, released that day): Artificial Analysis ranks it the top small model (Intelligence Index 43 at max, 41 at xhigh). It is used only as a Claude-pool alternate for `bounded`, `mechanical`, and `browser`. With Terminal-Bench 4.0 at 39.2% vs Sonnet 5.5's 70.6%, it is not used for feature, bugfix, review, architecture, or complex work. Arena had no data for it yet.
+
 | Task | Primary | Alternate | Main reason |
 | :--- | :--- | :--- | :--- |
 | feature | GPT-6.1 Sol (medium) | Claude Sonnet 5.5 (high) | Sol: best intelligence per dollar and highest Confirmed Success |
@@ -244,9 +246,9 @@ Illustration only, from the author's setup. Use your own available models and re
 | review | Claude Opus 5.5 (medium) | GPT-6.1 Sol (high) | Opus medium (AA 51) beats Sonnet high (47) at similar cost |
 | architecture | Claude Opus 5.5 (high) | GPT-6.1 Sol (xhigh) | Opus high: Arena Agent #2 at $1.56/task |
 | complex | Claude Opus 5.5 (high) | GPT-6 Astra (high) | Opus high outranks Astra max at half the cost; Astra Bash Recovery 5.3 |
-| bounded | GPT-6.1 Sol (low) | Claude Sonnet 5.5 (medium) | Luna's Confirmed Success ≈ 0 in Arena Agent, so too weak for logic |
-| mechanical | GPT-6 Luna (low) | Claude Sonnet 5.5 (low) | Fast (~130 t/s) and nearly free |
-| browser | Gemini 3.8 Flash High | Claude Sonnet 5.5 (high, capability unconfirmed) | Fastest available Gemini; weak agent signals, so simple checks only |
+| bounded | GPT-6.1 Sol (low) | Claude Haiku 5.5 (xhigh) | Luna's Confirmed Success ≈ 0 in Arena Agent, so too weak for logic; Haiku xhigh matches Sonnet medium (AA 41) at ~1/4 the price |
+| mechanical | GPT-6 Luna (low) | Claude Haiku 5.5 (medium) | Fast (~130 t/s) and nearly free; Haiku is the cheapest Claude-pool option |
+| browser | Gemini 3.8 Flash High | Claude Haiku 5.5 (xhigh, capability unconfirmed) | Fastest available Gemini; weak agent signals, so simple checks only. Haiku 5.5 scores 72.4% on OSWorld (computer use) |
 
 **Capacity factors used with this pairing:** `"capacity_factors": {"codex": 1, "claude": 1.5, "antigravity": 3}`
 

@@ -235,6 +235,8 @@ Orca 本身没有用于此的全局规则设置（已在 Orca 1.4.219 中核实�
 
 以下仅为作者自己环境的示例，请换成你可用的模型，并重新核对排行榜。
 
+2026-10-08 更新：加入当天发布的 Claude Haiku 5.5（`claude-haiku-5-5`）。Artificial Analysis 将其列为小模型第一（max 档智能指数 43，xhigh 档 41）。只用作 `bounded`、`mechanical`、`browser` 的 Claude 池备选；它的 Terminal-Bench 4.0 为 39.2%，远低于 Sonnet 5.5 的 70.6%，因此不用于 feature、bugfix、review、architecture、complex。撰写时 Arena 尚无它的数据。
+
 | 任务 | 主选 | 备选 | 主要依据 |
 | :--- | :--- | :--- | :--- |
 | feature | GPT-6.1 Sol（medium） | Claude Sonnet 5.5（high） | Sol 智能/价格比最好，Confirmed Success 最高 |
@@ -242,9 +244,9 @@ Orca 本身没有用于此的全局规则设置（已在 Orca 1.4.219 中核实�
 | review | Claude Opus 5.5（medium） | GPT-6.1 Sol（high） | Opus medium（AA 51）高于 Sonnet high（47），成本接近 |
 | architecture | Claude Opus 5.5（high） | GPT-6.1 Sol（xhigh） | Opus high 在 Arena Agent 排第 2，每任务 $1.56 |
 | complex | Claude Opus 5.5（high） | GPT-6 Astra（high） | Opus high 优于 Astra max，成本约一半；Astra Bash Recovery 仅 5.3 |
-| bounded | GPT-6.1 Sol（low） | Claude Sonnet 5.5（medium） | Luna 在 Arena Agent 的 Confirmed Success 约等于 0，不适合含逻辑的任务 |
-| mechanical | GPT-6 Luna（low） | Claude Sonnet 5.5（low） | 速度快（约 130 t/s），几乎不花钱 |
-| browser | Gemini 3.8 Flash High | Claude Sonnet 5.5（high，能力未确认） | 目前最快的可用 Gemini；agent 指标偏弱，仅用于简单页面验证 |
+| bounded | GPT-6.1 Sol（low） | Claude Haiku 5.5（xhigh） | Luna 在 Arena Agent 的 Confirmed Success 约等于 0，不适合含逻辑的任务；Haiku xhigh 与 Sonnet medium 同为 AA 41 分，价格约 1/4 |
+| mechanical | GPT-6 Luna（low） | Claude Haiku 5.5（medium） | 速度快（约 130 t/s），几乎不花钱；Haiku 是 Claude 池里最省的选择 |
+| browser | Gemini 3.8 Flash High | Claude Haiku 5.5（xhigh，能力未确认） | 目前最快的可用 Gemini；agent 指标偏弱，仅用于简单页面验证。Haiku 5.5 的 OSWorld（电脑操作）为 72.4% |
 
 **该配对使用的容量系数**：`"capacity_factors": {"codex": 1, "claude": 1.5, "antigravity": 3}`
 
