@@ -25,6 +25,7 @@
     "provider_keys": {"codex": "codex", "claude": "claude", "antigravity": "antigravity"},
     "capacity_factors": {"codex": 1, "claude": 1, "antigravity": 1},
     "reserves": {},
+    "reserve_scaling": "prorated",
     "unknown_policy": {"primary_without_reserve": "block"},
     "windows": {
       "session": {"expected_minutes": 300, "time_floor_minutes": 10, "weight": 0.5},

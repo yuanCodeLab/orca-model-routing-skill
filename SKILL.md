@@ -20,7 +20,7 @@ This skill provides reusable task-routing guidance and scripts. Its checked-in [
 
 - Each task compares only its configured primary and alternate profiles. A quota-based alternate is an initial selection, not an automatic retry.
 - Current quota reads are bounded and read-only. Unknown, stale, malformed, or mismatched quota data is distinct from known insufficiency and follows the configured unknown-data policy.
-- Reserves and task budgets are configurable hard gates. Example values are illustrative and are not calibrated recommendations.
+- Reserves and task budgets are configurable gates. With `reserve_scaling: prorated` (default), a reserve shrinks in proportion to the time left before its window resets; `fixed` keeps the full reserve. Example values are illustrative and are not calibrated recommendations.
 - Browser and other tool capabilities must be independently verified before enabling a profile or alternate.
 - Prefer a primary and alternate in different account pools; two profiles of the same agent share one quota, so switching between them never helps.
 - For a review, prefer a reviewer from a different model family than the implementer.

@@ -63,6 +63,9 @@ def validate_policy(policy):
         raise PolicyError('quota_policy.stale_after_seconds 必须为正。')
     if out['unknown_primary'] not in ('allow', 'block'):
         raise PolicyError('unknown_policy.primary_without_reserve 只能是 allow/block。')
+    out['reserve_scaling'] = policy.get('reserve_scaling', 'prorated')
+    if out['reserve_scaling'] not in ('prorated', 'fixed'):
+        raise PolicyError('quota_policy.reserve_scaling 只能是 prorated/fixed。')
     for agent, value in (policy.get('capacity_factors') or {}).items():
         if _nonneg(value, 'capacity_factors.' + agent) <= 0:
             raise PolicyError('capacity_factors.%s 必须为正。' % agent)
@@ -157,6 +160,10 @@ def _window(pol, wname, win, now_ms, reserve, factor, budget):
     if to_reset > mins + pol['skew'] / 60.0:
         return None, '%s resetsAt 超出窗口长度' % wname
     remaining = 100.0 - used
+    configured_reserve = reserve
+    if pol['reserve_scaling'] == 'prorated':
+        # A reserve covers the coordinator for a full window; only the share until reset still needs protecting.
+        reserve = reserve * min(1.0, to_reset / mins)
     available = max(0.0, remaining - reserve)
     scoring_minutes = max(to_reset, spec['floor'])
     raw = factor * available / scoring_minutes
@@ -164,7 +171,8 @@ def _window(pol, wname, win, now_ms, reserve, factor, budget):
     pace_ratio = (None if pool_remaining <= EPS else
                   (available / pool_remaining) / (scoring_minutes / spec['expected']))
     available_per_day = available / (to_reset / 1440.0)
-    return dict(remaining_pp=round(remaining, 4), reserve_pp=reserve, available_pp=round(available, 4),
+    return dict(remaining_pp=round(remaining, 4), reserve_pp=round(reserve, 4),
+                reserve_configured_pp=configured_reserve, available_pp=round(available, 4),
                 budget_pp=budget[wname], minutes_to_reset=round(to_reset, 2),
                 window_minutes=int(mins), time_floor_minutes=spec['floor'],
                 weight=spec['weight'], raw=raw,

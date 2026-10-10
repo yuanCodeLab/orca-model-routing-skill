@@ -177,7 +177,8 @@ All settings live in `routes.json` (or the example template). They are reread on
 | `tasks.<kind>` | `primary` and `alternate` profile names, `effort`, `description` (used as the worker task title), optional `read_only: true` (worker told not to edit files) |
 | `tasks.<kind>.alternate_capability_confirmed` | Set `false` when the alternate has not been verified to have the tools the task needs (e.g. browser). It then can never be auto-selected |
 | `explicit_overrides.allowed_efforts` | Values accepted by `--effort` |
-| `quota_policy.reserves` | Per-agent hard reserve in percentage points, e.g. `{"claude": {"session": 20, "weekly": 30}}`. Never dispatched into, even close to reset |
+| `quota_policy.reserves` | Per-agent reserve in percentage points for the coordinator's own use over one full window, e.g. `{"claude": {"session": 20, "weekly": 10}}`. Workers never dispatch into the effective reserve |
+| `quota_policy.reserve_scaling` | `prorated` (default): effective reserve = configured reserve × minutes to reset ÷ window minutes, so it shrinks as the reset approaches and quota is not locked up just before it resets. `fixed`: always deduct the full configured reserve |
 | `quota_policy.task_budget_points` | Minimum available points per window a candidate needs for `normal` / `hard` tasks. Overridable with `--budget-session` / `--budget-weekly` |
 | `quota_policy.capacity_factors` | Relative weight per agent for scoring. Illustrative only, not measured token capacity |
 | `quota_policy.windows` | Expected window length, time floor, and weight for `session` and `weekly` |
@@ -254,16 +255,16 @@ Updated 2026-10-08 for Claude Haiku 5.5 (`claude-haiku-5-5`, released that day):
 
 In the author's experience, the same 1% of Claude subscription quota lasts longer than 1% of Codex quota, so Claude is weighted 1.5×. This comes from day-to-day use and has **not been measured**; neither vendor publishes how many tokens 1% represents. The template keeps every factor at `1`.
 
-Because every pair crosses pools, this factor affects every task. Combined with a Claude reserve of session 20 / weekly 10, the effect for `feature` (primary Sol / alternate Sonnet) when both pools show the same usage is:
+Because every pair crosses pools, this factor affects every task. Combined with a Claude reserve of session 20 / weekly 10 (prorated), the effect for `feature` (primary Sol / alternate Sonnet) when both pools show the same usage, with about 2 hours left in the session window and 2 days in the weekly window, is:
 
 | `claude` factor | Primary (Codex) wins once both pools have used at least |
 | :--- | :--- |
 | 1 | 0% (always, at equal usage) |
-| 1.2 | ~15% |
-| **1.5** | **~57%** |
-| 2 | ~71% |
+| 1.2 | ~70% |
+| **1.5** | **~85%** |
+| 2 | ~89% |
 
-So with `1.5`, Claude alternates take most tasks while both pools are fresh, and Codex primaries take over as Claude approaches its reserve. If the Claude pool keeps running out before Codex, or the coordinator is often blocked by the reserve, lower the factor.
+So with `1.5`, Claude alternates take most tasks until Claude is nearly used up, and Codex primaries take over only near the reserve line. The closer the resets, the smaller the prorated reserve and the stronger this tilt. With a `fixed` reserve the thresholds are lower (1.2 → ~15%, 1.5 → ~57%, 2 → ~71%). If the Claude pool keeps running out before Codex, or the coordinator is often blocked by the reserve, lower the factor.
 
 To calibrate: record each pool's `usedPercent` (from `orca account list --json`) before and after tasks, average the points consumed per task kind, and set the factor ≈ Codex points per task ÷ Claude points per task. Usage is reported in whole percent, so average over at least ten or so tasks, run one at a time, preferably on the 5-hour session window.
 

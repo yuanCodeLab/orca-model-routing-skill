@@ -175,7 +175,8 @@ Orca 本身没有用于此的全局规则设置（已在 Orca 1.4.219 中核实�
 | `tasks.<类型>` | `primary` 与 `alternate` 档位名、`effort`、`description`（用作 worker 任务标题）、可选 `read_only: true`（要求 worker 不修改文件） |
 | `tasks.<类型>.alternate_capability_confirmed` | 备选尚未验证具备任务所需工具（如浏览器）时设为 `false`，此时备选永远不会被自动选用 |
 | `explicit_overrides.allowed_efforts` | `--effort` 允许的取值 |
-| `quota_policy.reserves` | 按 Agent 设置的硬性预留（百分点），如 `{"claude": {"session": 20, "weekly": 30}}`；即使快重置也不会动用 |
+| `quota_policy.reserves` | 按 Agent 设置的预留（百分点），表示协调会话一个完整窗口的用量，如 `{"claude": {"session": 20, "weekly": 10}}`；worker 不会动用实际生效的预留 |
+| `quota_policy.reserve_scaling` | `prorated`（默认）：实际预留 = 配置预留 × 距重置分钟 ÷ 窗口分钟，越接近重置预留越少，避免临近重置时把额度白白锁死。`fixed`：全程扣除完整的配置预留 |
 | `quota_policy.task_budget_points` | normal / hard 任务在每个窗口至少需要的可派发点数；可用 `--budget-session` / `--budget-weekly` 单次覆盖 |
 | `quota_policy.capacity_factors` | 各 Agent 的打分相对权重；仅为示例，不是实测 token 容量 |
 | `quota_policy.windows` | `session` 与 `weekly` 窗口的预期长度、时间下限和权重 |
@@ -252,16 +253,16 @@ Orca 本身没有用于此的全局规则设置（已在 Orca 1.4.219 中核实�
 
 按作者的使用体感，同样 1% 的订阅额度，Claude 比 Codex 更耐用，所以给 Claude 1.5 倍权重。这是日常使用的经验，**并未实测**；两家都没有公布 1% 额度对应多少 token。模板中所有系数都保持为 `1`。
 
-由于每个任务的主备都跨账户池，这个系数会影响每一个任务的选择。结合 Claude 池 session 20 / weekly 10 的预留，以 `feature`（主选 Sol / 备选 Sonnet）为例，两个池用量相同时：
+由于每个任务的主备都跨账户池，这个系数会影响每一个任务的选择。结合 Claude 池 session 20 / weekly 10 的预留（按时间缩小），以 `feature`（主选 Sol / 备选 Sonnet）为例，两个池用量相同、5 小时窗口约剩 2 小时、周窗口约剩 2 天时：
 
 | `claude` 系数 | 两池用量都达到多少后，主选（Codex）胜出 |
 | :--- | :--- |
 | 1 | 0%（用量相同时总是主选） |
-| 1.2 | 约 15% |
-| **1.5** | **约 57%** |
-| 2 | 约 71% |
+| 1.2 | 约 70% |
+| **1.5** | **约 85%** |
+| 2 | 约 89% |
 
-也就是说，取 `1.5` 时，两边额度都还充足时大多数任务会交给 Claude 备选；Claude 接近预留线后，才回到 Codex 主选。如果发现 Claude 池总比 Codex 先见底，或主调度经常因为预留被阻断，就把系数调低。
+也就是说，取 `1.5` 时，Claude 用到接近见底之前，大多数任务都会交给 Claude 备选，接近预留线后才回到 Codex 主选。离重置越近，按时间缩小后的预留越少，这种倾向越明显。若改用 `fixed` 固定预留，分界点会低一些（1.2 约 15%，1.5 约 57%，2 约 71%）。如果发现 Claude 池总比 Codex 先见底，或主调度经常因为预留被阻断，就把系数调低。
 
 校准方法：任务前后各记录一次该池的 `usedPercent`（来自 `orca account list --json`），按任务类型求每个任务平均消耗的百分点，系数 ≈ Codex 每任务消耗 ÷ Claude 每任务消耗。用量按整数百分比显示，所以至少积累十来个任务再取平均，测量期间一次只跑一个任务，最好看 5 小时的 session 窗口。
 

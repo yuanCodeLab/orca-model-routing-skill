@@ -41,7 +41,7 @@ def explain(config):
         '各窗原始分=capacity_factor*available_pp/max(距重置分钟,时间下限)；%s 分别在可比候选间归一化后按窗口权重加权；仅比较窗口长度一致的数据；同分选主。' % window_text,
         'pace_ratio=(available_pp/(100-reserve_pp))/(max(距重置分钟,时间下限)/窗口分钟)，每天可用消耗百分点由可用额度除以实际剩余天数得到；两者只作解释指标，不重复乘入原始分；reserve=100 时 pace_ratio=null 且额度不足阻断。',
         'capacity_factor 是经验示例权重，不是真实 token 数或已验证容量；预算点数未经测量校准，预算够不代表足以完成任务。',
-        '调度预留为配置中的硬边界（%s）；可派发额度=剩余点-预留点，快重置也不越过；低于预算则候选不可派发。' % reserves,
+        '调度预留（%s）是协调会话一个完整窗口的用量；reserve_scaling=%s：prorated 时实际预留=配置值×距重置分钟/窗口分钟，越接近重置预留越少，fixed 时全程按配置值扣除；可派发额度=剩余点-实际预留点；低于预算则候选不可派发。' % (reserves, policy.get('reserve_scaling', 'prorated')),
         '额度未知（查询失败/缺失/过期/异常/窗口不符）与已知不足是两种状态：未知不当 0 或 100，也不让备选自动胜出；无预留 primary 未知时的策略为 %s，带预留的池永远阻断。' % unknown,
         '“首次额度选择”（本脚本，基于额度的 primary 对比 alternate）与“失败后重试”是两件事：重试由协调者重新评估并按 Orca --retry-of 处理，本脚本不代办、不自动切备选。',
         '运行中任务不迁移；每个新任务重新选择。',
