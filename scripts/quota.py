@@ -70,6 +70,16 @@ def validate_policy(policy):
         if _nonneg(value, 'capacity_factors.' + agent) <= 0:
             raise PolicyError('capacity_factors.%s 必须为正。' % agent)
         out['factors'][agent] = float(value)
+    out['horizons'] = {}
+    for agent, per in (policy.get('reset_horizon_minutes') or {}).items():
+        if not isinstance(per, dict):
+            raise PolicyError('reset_horizon_minutes.%s 必须是对象。' % agent)
+        for w, value in per.items():
+            if w not in WINDOWS:
+                raise PolicyError('reset_horizon_minutes.%s 只能包含 %s。' % (agent, '/'.join(WINDOWS)))
+            if _nonneg(value, 'reset_horizon_minutes.%s.%s' % (agent, w)) <= 0:
+                raise PolicyError('reset_horizon_minutes.%s.%s 必须为正。' % (agent, w))
+        out['horizons'][agent] = {w: float(v) for w, v in per.items()}
     for agent, per in (policy.get('reserves') or {}).items():
         out['reserves'][agent] = {w: _nonneg((per or {}).get(w, 0), 'reserves.%s.%s' % (agent, w), 100)
                                   for w in WINDOWS}
@@ -142,7 +152,7 @@ def fetch_snapshot(pol, runner=None, clock=None):
     return snap
 
 
-def _window(pol, wname, win, now_ms, reserve, factor, budget):
+def _window(pol, wname, win, now_ms, reserve, factor, budget, horizon=None):
     """Validate one window. Returns (info, reason); reason means unknown."""
     spec = pol['windows'][wname]
     if not isinstance(win, dict):
@@ -165,7 +175,8 @@ def _window(pol, wname, win, now_ms, reserve, factor, budget):
         # A reserve covers the coordinator for a full window; only the share until reset still needs protecting.
         reserve = reserve * min(1.0, to_reset / mins)
     available = max(0.0, remaining - reserve)
-    scoring_minutes = max(to_reset, spec['floor'])
+    # A provider that habitually resets early is scored as if its reset were no further than the horizon.
+    scoring_minutes = max(min(to_reset, horizon) if horizon else to_reset, spec['floor'])
     raw = factor * available / scoring_minutes
     pool_remaining = 100.0 - reserve
     pace_ratio = (None if pool_remaining <= EPS else
@@ -174,6 +185,7 @@ def _window(pol, wname, win, now_ms, reserve, factor, budget):
     return dict(remaining_pp=round(remaining, 4), reserve_pp=round(reserve, 4),
                 reserve_configured_pp=configured_reserve, available_pp=round(available, 4),
                 budget_pp=budget[wname], minutes_to_reset=round(to_reset, 2),
+                scoring_minutes=round(scoring_minutes, 2), reset_horizon_minutes=horizon,
                 window_minutes=int(mins), time_floor_minutes=spec['floor'],
                 weight=spec['weight'], raw=raw,
                 pace_ratio=None if pace_ratio is None else round(pace_ratio, 4),
@@ -219,7 +231,8 @@ def evaluate_candidate(name, profile, role, pol, snap, budget, now_ms, task_rule
                 unknown.append('%s 额度数据过期（%.0fs > %.0fs）' % (key, age, pol['stale']))
         reserves = pol['reserves'].get(agent, {})
         for w in WINDOWS:
-            info, why = _window(pol, w, prov.get(w), now_ms, reserves.get(w, 0.0), factor, budget)
+            info, why = _window(pol, w, prov.get(w), now_ms, reserves.get(w, 0.0), factor, budget,
+                                pol['horizons'].get(agent, {}).get(w))
             if why:
                 unknown.append(why)
             else:

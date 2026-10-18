@@ -183,7 +183,8 @@ All settings live in `routes.json` (or the example template). They are reread on
 | `quota_policy.capacity_factors` | Relative weight per agent for scoring. Illustrative only, not measured token capacity |
 | `quota_policy.windows` | Expected window length, time floor, and weight for `session` and `weekly` |
 | `quota_policy.unknown_policy.primary_without_reserve` | `block` (default) or `allow`: whether an unknown-quota primary without a reserve may still launch |
-| `quota_policy.stale_after_seconds` | Quota data older than this is treated as unknown |
+| `quota_policy.reset_horizon_minutes` | Optional, per agent and window, e.g. `{"codex": {"weekly": 4320}}`. For a provider that in practice resets earlier than its stated window, scoring uses min(minutes to reset, horizon) instead of the stated reset time. Window length validation and prorated reserves still use the real values. Leave unset when the provider resets on schedule |
+| `quota_policy.stale_after_seconds` | Quota data older than this is treated as unknown. Orca refreshes some providers only every few minutes (Codex was observed at about 8–9 minutes), so a limit below that marks them unknown much of the time |
 | `jev` | Optional auto-classification; see below |
 
 **Tip:** Put a task's primary and alternate in **different account pools** (different `agent`). Two profiles in the same pool read the same quota, so the comparison always keeps the primary, and when the primary is short the alternate is short too; quota switching never takes effect.

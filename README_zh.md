@@ -181,7 +181,8 @@ Orca 本身没有用于此的全局规则设置（已在 Orca 1.4.219 中核实�
 | `quota_policy.capacity_factors` | 各 Agent 的打分相对权重；仅为示例，不是实测 token 容量 |
 | `quota_policy.windows` | `session` 与 `weekly` 窗口的预期长度、时间下限和权重 |
 | `quota_policy.unknown_policy.primary_without_reserve` | `block`（默认）或 `allow`：无预留的主选额度未知时是否仍可启动 |
-| `quota_policy.stale_after_seconds` | 超过该秒数的额度数据视为未知 |
+| `quota_policy.reset_horizon_minutes` | 可选，按 Agent 和窗口配置，例如 `{"codex": {"weekly": 4320}}`。适用于实际重置早于标称周期的服务：打分时用 min(距重置分钟, 该值) 代替标称的重置时间。窗口长度校验和按时间缩小的预留仍用真实值。按时重置的服务不要配置 |
+| `quota_policy.stale_after_seconds` | 超过该秒数的额度数据视为未知。Orca 对部分服务只隔几分钟刷新一次（实测 Codex 约 8–9 分钟），低于这个间隔会让它们经常被判为未知 |
 | `jev` | 可选的自动分类，见下文 |
 
 **建议**：主选与备选尽量放在**不同的账户池**（不同 `agent`）。同一账户池的两个档位读取的是同一份额度，比较结果永远是主选，主选不足时备选也必然不足，额度切换不会生效。
