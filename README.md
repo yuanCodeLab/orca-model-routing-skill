@@ -235,28 +235,44 @@ The template ships with placeholder profiles. To pick real models for each task 
 | `mechanical` | Speed, price | The fastest, cheapest model is fine |
 | `browser` | Steerability, Bash Recovery, Tool Hallucination, speed | Verify tool access first; weak agent models suit only simple page checks |
 
-### Example Pairing (snapshot, 2026-10)
+### Example Pairing (snapshot, 2026-10-31)
 
 Illustration only, from the author's setup. Use your own available models and re-check the leaderboards.
 
-Updated 2026-10-08 for Claude Haiku 5.5 (`claude-haiku-5-5`, released that day): Artificial Analysis ranks it the top small model (Intelligence Index 43 at max, 41 at xhigh). It is used only as a Claude-pool alternate for `bounded`, `mechanical`, and `browser`. With Terminal-Bench 4.0 at 39.2% vs Sonnet 5.5's 70.6%, it is not used for feature, bugfix, review, architecture, or complex work. Arena had no data for it yet.
+**Leaderboard snapshot used** (Artificial Analysis 2026-10-31, Arena 2026-10-27/31). AA scores are per effort; Arena ranks mostly the max variant of each model:
+
+| Model | AA Intelligence Index by effort (cost per task) | Arena Agent | Arena WebDev |
+| :--- | :--- | :--- | :--- |
+| Claude Opus 5.5 | medium 48 ($2.45) · high 52 ($3.46) · xhigh 57 ($6.05) · max 58 ($10.04) | #1 | #1 (1810) |
+| Claude Sonnet 5.5 | medium 30 ($0.78) · high 41 ($1.64) · xhigh 50 ($4.09) · max 54 | #3 | xhigh #3 · high #8 |
+| Claude Fable 5.1 | high 47 ($7.54) · xhigh 50 ($10.85) · max 49 | #4 | #6 |
+| GPT-6.1 Sol | low 35 ($0.16) · medium 46 ($0.36) · high 50 ($0.59) · xhigh 52 ($0.76) · max 55 | #6 | #5 (1751) |
+| GPT-6.1 Terra | low 29 ($0.07) · medium 38 ($0.17) · high 42 ($0.26) · xhigh 45 ($0.40) · max 51 | #8 | #14 |
+| Claude Haiku 5.5 | medium 25 ($0.09) · high 30 ($0.16) · xhigh 34 ($0.25) · max 36 | #24 | #36 |
+| Gemini 3.8 Flash | medium 30 · high 31 | #19 | #37 |
+
+AA overall top at the time: Gemini 4 Carbon 59, Opus 5.5 max 58, Opus 5.5 xhigh 57, GPT-6 Astra max 57.
 
 | Task | Primary | Alternate | Main reason |
 | :--- | :--- | :--- | :--- |
-| feature | GPT-6.1 Sol (medium) | Claude Sonnet 5.5 (high) | Sol: best intelligence per dollar and highest Confirmed Success |
-| bugfix | Claude Sonnet 5.5 (high) | GPT-6.1 Sol (medium) | Sonnet Bash Recovery 15.1 vs Sol 3.5; Sonnet drops sharply at medium (AA 41) |
-| review | Claude Opus 5.5 (medium) | GPT-6.1 Sol (high) | Opus medium (AA 51) beats Sonnet high (47) at similar cost |
-| architecture | Claude Opus 5.5 (high) | GPT-6.1 Sol (xhigh) | Opus high: Arena Agent #2 at $1.56/task |
-| complex | Claude Opus 5.5 (high) | GPT-6 Astra (high) | Opus high outranks Astra max at half the cost; Astra Bash Recovery 5.3 |
-| bounded | GPT-6.1 Sol (low) | Claude Haiku 5.5 (xhigh) | Luna's Confirmed Success ≈ 0 in Arena Agent, so too weak for logic; Haiku xhigh matches Sonnet medium (AA 41) at ~1/4 the price |
-| mechanical | GPT-6 Luna (low) | Claude Haiku 5.5 (medium) | Fast (~130 t/s) and nearly free; Haiku is the cheapest Claude-pool option |
-| browser | Gemini 3.8 Flash High | Claude Haiku 5.5 (xhigh, capability unconfirmed) | Fastest available Gemini; weak agent signals, so simple checks only. Haiku 5.5 scores 72.4% on OSWorld (computer use) |
+| feature | GPT-6.1 Sol (medium) | Claude Opus 5.5 (medium) | Sol: best intelligence per dollar (46 at $0.36); Opus medium (48) beats Sonnet high (41) |
+| bugfix | Claude Opus 5.5 (medium, hard: high) | GPT-6.1 Sol (medium) | Opus is #1 on both Arena boards; Sonnet drops sharply at medium (AA 30) |
+| review | Claude Opus 5.5 (medium) | GPT-6.1 Sol (high) | Strong reviewer from a different family than the feature implementer |
+| architecture | Claude Opus 5.5 (xhigh) | GPT-6.1 Sol (xhigh) | Read-only and low-volume; xhigh (57) is within 1 point of max (58) at 60% of the cost |
+| complex | Claude Opus 5.5 (high, hard: xhigh) | GPT-6.1 Sol (high) | Strongest agent model; do not start below high |
+| bounded | GPT-6.1 Terra (medium) | Claude Haiku 5.5 (xhigh) | Terra medium (38) beats Sol low (35) at about the same cost; Haiku xhigh (34) is above Sonnet medium (30) at 1/3 the price |
+| mechanical | GPT-6.1 Terra (low) | Claude Haiku 5.5 (medium) | Cheapest capable tiers; replaces GPT-6 Luna (low scores only 10) |
+| browser | Claude Sonnet 5.5 (high) | GPT-6.1 Terra (medium) | Sonnet: Arena Agent #3 and the highest OSWorld score of these models; Terra is positioned for computer use, but its safety report shows 13.75% unauthorized actions (Sol 1.25%), so it only runs local headless checks, never logged-in external sites |
+
+Not routed automatically: **Claude Fable 5.1** is scored below Opus 5.5 at every effort and costs about 2× more, so it is only an explicit escalation profile for `complex`/`architecture`. **Opus max** adds 1 point over xhigh for 1.7× the cost and is not in `allowed_efforts`.
+
+**When quota is plentiful**, the author temporarily steps each kind up one effort level (feature Sol high / Opus high, bugfix and review Opus high, complex Opus xhigh / Sol xhigh, bounded Sol medium / Sonnet high) and reverts after the weekly reset. Note that per-task budget points do not scale with effort, so the quota check underestimates the real burn of upgraded tiers. Do not "upgrade" to Sonnet medium: it scores below Haiku xhigh.
 
 **Capacity factors used with this pairing:** `"capacity_factors": {"codex": 1, "claude": 1.5, "antigravity": 3}`
 
 In the author's experience, the same 1% of Claude subscription quota lasts longer than 1% of Codex quota, so Claude is weighted 1.5×. This comes from day-to-day use and has **not been measured**; neither vendor publishes how many tokens 1% represents. The template keeps every factor at `1`.
 
-Because every pair crosses pools, this factor affects every task. Combined with a Claude reserve of session 20 / weekly 10 (prorated), the effect for `feature` (primary Sol / alternate Sonnet) when both pools show the same usage, with about 2 hours left in the session window and 2 days in the weekly window, is:
+Because every pair crosses pools, this factor affects every task. Combined with a Claude reserve of session 20 / weekly 10 (prorated), the effect for `feature` (primary Sol / alternate Opus) when both pools show the same usage, with about 2 hours left in the session window and 2 days in the weekly window, is:
 
 | `claude` factor | Primary (Codex) wins once both pools have used at least |
 | :--- | :--- |

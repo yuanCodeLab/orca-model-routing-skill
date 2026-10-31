@@ -233,28 +233,44 @@ Orca 本身没有用于此的全局规则设置（已在 Orca 1.4.219 中核实�
 | `mechanical` | 速度、价格 | 最快最便宜的模型即可 |
 | `browser` | Steerability、Bash Recovery、Tool Hallucination、速度 | 先确认工具可用；agent 能力弱的模型只适合简单页面验证 |
 
-### 配对示例（2026-10 快照）
+### 配对示例（2026-10-31 快照）
 
 以下仅为作者自己环境的示例，请换成你可用的模型，并重新核对排行榜。
 
-2026-10-08 更新：加入当天发布的 Claude Haiku 5.5（`claude-haiku-5-5`）。Artificial Analysis 将其列为小模型第一（max 档智能指数 43，xhigh 档 41）。只用作 `bounded`、`mechanical`、`browser` 的 Claude 池备选；它的 Terminal-Bench 4.0 为 39.2%，远低于 Sonnet 5.5 的 70.6%，因此不用于 feature、bugfix、review、architecture、complex。撰写时 Arena 尚无它的数据。
+**参考的排行数据**（Artificial Analysis 2026-10-31，Arena 2026-10-27/31）。AA 按推理档位分别给分；Arena 基本只收录各模型的 max 档：
+
+| 模型 | AA 智能指数（每任务成本） | Arena Agent | Arena WebDev |
+| :--- | :--- | :--- | :--- |
+| Claude Opus 5.5 | medium 48（$2.45）· high 52（$3.46）· xhigh 57（$6.05）· max 58（$10.04） | 第 1 | 第 1（1810） |
+| Claude Sonnet 5.5 | medium 30（$0.78）· high 41（$1.64）· xhigh 50（$4.09）· max 54 | 第 3 | xhigh 第 3 · high 第 8 |
+| Claude Fable 5.1 | high 47（$7.54）· xhigh 50（$10.85）· max 49 | 第 4 | 第 6 |
+| GPT-6.1 Sol | low 35（$0.16）· medium 46（$0.36）· high 50（$0.59）· xhigh 52（$0.76）· max 55 | 第 6 | 第 5（1751） |
+| GPT-6.1 Terra | low 29（$0.07）· medium 38（$0.17）· high 42（$0.26）· xhigh 45（$0.40）· max 51 | 第 8 | 第 14 |
+| Claude Haiku 5.5 | medium 25（$0.09）· high 30（$0.16）· xhigh 34（$0.25）· max 36 | 第 24 | 第 36 |
+| Gemini 3.8 Flash | medium 30 · high 31 | 第 19 | 第 37 |
+
+当时 AA 总榜前列：Gemini 4 Carbon 59、Opus 5.5 max 58、Opus 5.5 xhigh 57、GPT-6 Astra max 57。
 
 | 任务 | 主选 | 备选 | 主要依据 |
 | :--- | :--- | :--- | :--- |
-| feature | GPT-6.1 Sol（medium） | Claude Sonnet 5.5（high） | Sol 智能/价格比最好，Confirmed Success 最高 |
-| bugfix | Claude Sonnet 5.5（high） | GPT-6.1 Sol（medium） | Bash Recovery：Sonnet 15.1，Sol 3.5；Sonnet 降到 medium 后明显变弱（AA 41） |
-| review | Claude Opus 5.5（medium） | GPT-6.1 Sol（high） | Opus medium（AA 51）高于 Sonnet high（47），成本接近 |
-| architecture | Claude Opus 5.5（high） | GPT-6.1 Sol（xhigh） | Opus high 在 Arena Agent 排第 2，每任务 $1.56 |
-| complex | Claude Opus 5.5（high） | GPT-6 Astra（high） | Opus high 优于 Astra max，成本约一半；Astra Bash Recovery 仅 5.3 |
-| bounded | GPT-6.1 Sol（low） | Claude Haiku 5.5（xhigh） | Luna 在 Arena Agent 的 Confirmed Success 约等于 0，不适合含逻辑的任务；Haiku xhigh 与 Sonnet medium 同为 AA 41 分，价格约 1/4 |
-| mechanical | GPT-6 Luna（low） | Claude Haiku 5.5（medium） | 速度快（约 130 t/s），几乎不花钱；Haiku 是 Claude 池里最省的选择 |
-| browser | Gemini 3.8 Flash High | Claude Haiku 5.5（xhigh，能力未确认） | 目前最快的可用 Gemini；agent 指标偏弱，仅用于简单页面验证。Haiku 5.5 的 OSWorld（电脑操作）为 72.4% |
+| feature | GPT-6.1 Sol（medium） | Claude Opus 5.5（medium） | Sol 智能/价格比最好（46 分，$0.36）；Opus medium（48）高于 Sonnet high（41） |
+| bugfix | Claude Opus 5.5（medium，hard 用 high） | GPT-6.1 Sol（medium） | Opus 在 Arena 两个榜都是第 1；Sonnet 降到 medium 后明显变弱（AA 30） |
+| review | Claude Opus 5.5（medium） | GPT-6.1 Sol（high） | 审查用强模型，且与 feature 的实现者不同家族 |
+| architecture | Claude Opus 5.5（xhigh） | GPT-6.1 Sol（xhigh） | 只读、频率低；xhigh（57）只比 max（58）低 1 分，成本约 60% |
+| complex | Claude Opus 5.5（high，hard 用 xhigh） | GPT-6.1 Sol（high） | 最强的 agent 模型，不从 high 以下起步 |
+| bounded | GPT-6.1 Terra（medium） | Claude Haiku 5.5（xhigh） | Terra medium（38）高于 Sol low（35），成本接近；Haiku xhigh（34）高于 Sonnet medium（30），价格约 1/3 |
+| mechanical | GPT-6.1 Terra（low） | Claude Haiku 5.5（medium） | 最便宜且够用的档位；替换 GPT-6 Luna（low 档仅 10 分） |
+| browser | Claude Sonnet 5.5（high） | GPT-6.1 Terra（medium） | Sonnet 在 Arena Agent 排第 3，OSWorld 在这几个模型里最高；Terra 官方定位 computer use，但安全报告显示未授权操作 13.75%（Sol 1.25%），所以只做本机无头验证，不操作已登录的外部网站 |
+
+不自动选用的：**Claude Fable 5.1** 各档分数都低于 Opus 5.5，成本约 2 倍，只作为 `complex`/`architecture` 的显式升级档。**Opus max** 比 xhigh 只高 1 分，成本约 1.7 倍，未列入 `allowed_efforts`。
+
+**额度充裕时**，作者会临时把各类任务升一级 effort（feature 用 Sol high / Opus high，bugfix 与 review 用 Opus high，complex 用 Opus xhigh / Sol xhigh，bounded 用 Sol medium / Sonnet high），周额度重置后再改回。注意每个任务的预算点不随 effort 放大，升档后额度检查会低估实际消耗。不要"升"到 Sonnet medium，它的分数比 Haiku xhigh 还低。
 
 **该配对使用的容量系数**：`"capacity_factors": {"codex": 1, "claude": 1.5, "antigravity": 3}`
 
 按作者的使用体感，同样 1% 的订阅额度，Claude 比 Codex 更耐用，所以给 Claude 1.5 倍权重。这是日常使用的经验，**并未实测**；两家都没有公布 1% 额度对应多少 token。模板中所有系数都保持为 `1`。
 
-由于每个任务的主备都跨账户池，这个系数会影响每一个任务的选择。结合 Claude 池 session 20 / weekly 10 的预留（按时间缩小），以 `feature`（主选 Sol / 备选 Sonnet）为例，两个池用量相同、5 小时窗口约剩 2 小时、周窗口约剩 2 天时：
+由于每个任务的主备都跨账户池，这个系数会影响每一个任务的选择。结合 Claude 池 session 20 / weekly 10 的预留（按时间缩小），以 `feature`（主选 Sol / 备选 Opus）为例，两个池用量相同、5 小时窗口约剩 2 小时、周窗口约剩 2 天时：
 
 | `claude` 系数 | 两池用量都达到多少后，主选（Codex）胜出 |
 | :--- | :--- |
