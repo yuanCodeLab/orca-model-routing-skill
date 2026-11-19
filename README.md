@@ -26,7 +26,7 @@ flowchart LR
     Review --> Start["route.py start --expected-profile<br>(re-checks quota; refuses if the selection changed)"]
 ```
 
-> A quota-based alternate is an **initial selection**, not a retry after failure. The scripts never retry, switch accounts, or launch anything during `plan`.
+> A quota-based alternate can be selected for the initial dispatch. `plan` only produces a routing decision. The opt-in quota guard can hand off an active dispatch to another pool.
 
 ---
 
@@ -182,14 +182,45 @@ All settings live in `routes.json` (or the example template). They are reread on
 | `quota_policy.task_budget_points` | Minimum available points per window a candidate needs for `normal` / `hard` tasks. Overridable with `--budget-session` / `--budget-weekly` |
 | `quota_policy.capacity_factors` | Relative weight per agent for scoring. Illustrative only, not measured token capacity |
 | `quota_policy.windows` | Expected window length, time floor, and weight for `session` and `weekly` |
-| `quota_policy.unknown_policy.primary_without_reserve` | `block` (default) or `allow`: whether an unknown-quota primary without a reserve may still launch |
+| `quota_policy.unknown_policy.primary_without_reserve` | `block` (shown in the template) or `allow`: whether an unknown-quota primary without a reserve may still launch |
 | `quota_policy.reset_horizon_minutes` | Optional, per agent and window, e.g. `{"codex": {"weekly": 4320}}`. For a provider that in practice resets earlier than its stated window, scoring uses min(minutes to reset, horizon) instead of the stated reset time. Window length validation and prorated reserves still use the real values. Leave unset when the provider resets on schedule |
 | `quota_policy.stale_after_seconds` | Quota data older than this is treated as unknown. Orca refreshes some providers only every few minutes (Codex was observed at about 8–9 minutes), so a limit below that marks them unknown much of the time |
+| `quota_policy.primary_first` | Keep an eligible primary whose weekly pace meets `min_weekly_pace_ratio`. Set pool-specific thresholds with `min_weekly_pace_ratio_by_pool` |
+| `quota_policy.session_headroom` | Minimum available 5-hour quota in percentage points for selected pools and each complexity. Use `by_kind` for task-specific values |
+| `tasks.<kind>.prefer_primary` | Keep the primary whenever it meets the quota checks, even when the alternate scores higher |
+| `tasks.<kind>.escalation` | Additional profile available with explicit `--profile` and subject to quota checks |
+| `models.<profile>.budget_multiplier` / `quota_cap_window` | Scale the task budget for a profile and optionally also require available quota in a model-specific sub-limit |
+| `quota_policy.quota_guard` / `restore_reminder` | Opt in to monitoring and cross-pool handoffs, or to a weekly reminder about restoring a pool's scoring weight |
 | `jev` | Optional auto-classification; see below |
 
 **Tip:** Put a task's primary and alternate in **different account pools** (different `agent`). Two profiles in the same pool read the same quota, so the comparison always keeps the primary, and when the primary is short the alternate is short too; quota switching never takes effect.
 
 Example values (budgets, factors, weights) are illustrative and not calibrated recommendations.
+
+---
+
+## Quota Guard and Restore Reminders
+
+Enable `quota_policy.quota_guard` for the account pools you want to monitor. For router-started workers in those pools, the guard checks projected session and weekly quota against the configured floor. An authorized cross-pool handoff requires a viable target, a complete worker handoff report, confirmed exit of the old worker, and a new routing check. Use these commands to inspect the guard.
+
+```sh
+python3 scripts/quota_guard.py status
+python3 scripts/quota_guard.py --dry-run
+```
+
+The 5-hour headroom check requires the larger of the task budget and the effective threshold after reserves. As reset approaches, the threshold is capped at projected burn before reset plus the guard's floor. The weekly budget still applies.
+
+Set `quota_policy.restore_reminder` when lowering a pool's scoring weight temporarily. If projected unused weekly quota reaches the configured thresholds, report `restore_reminder.first_in_window: true` to the user. Apply any resulting weight change manually. Use `plan --preview` to skip the usage refresh and leave the week's reminder available.
+
+Use `browser_check` for local headless checks, `browser_flow` for local interaction flows, `browser_debug` for local diagnosis, and `browser_external` for external or signed-in sites. The example's legacy `browser` kind uses the same boundary as `browser_external`. Assign profiles that are approved for each boundary and verify the alternate before enabling automatic selection.
+
+## Running Tests
+
+```sh
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+The suite uses synthetic routing and terminal data in `tests/fixtures/` and temporary state directories.
 
 ---
 
@@ -255,18 +286,16 @@ AA overall top at the time: Gemini 4 Carbon 59, Opus 5.5 max 58, Opus 5.5 xhigh 
 
 | Task | Primary | Alternate | Main reason |
 | :--- | :--- | :--- | :--- |
-| feature | GPT-6.1 Sol (medium) | Claude Opus 5.5 (medium) | Sol: best intelligence per dollar (46 at $0.36); Opus medium (48) beats Sonnet high (41) |
-| bugfix | Claude Opus 5.5 (medium, hard: high) | GPT-6.1 Sol (medium) | Opus is #1 on both Arena boards; Sonnet drops sharply at medium (AA 30) |
-| review | Claude Opus 5.5 (medium) | GPT-6.1 Sol (high) | Strong reviewer from a different family than the feature implementer |
-| architecture | Claude Opus 5.5 (xhigh) | GPT-6.1 Sol (xhigh) | Read-only and low-volume; xhigh (57) is within 1 point of max (58) at 60% of the cost |
-| complex | Claude Opus 5.5 (high, hard: xhigh) | GPT-6.1 Sol (high) | Strongest agent model; do not start below high |
-| bounded | GPT-6.1 Terra (medium) | Claude Haiku 5.5 (xhigh) | Terra medium (38) beats Sol low (35) at about the same cost; Haiku xhigh (34) is above Sonnet medium (30) at 1/3 the price |
-| mechanical | GPT-6.1 Terra (low) | Claude Haiku 5.5 (medium) | Cheapest capable tiers; replaces GPT-6 Luna (low scores only 10) |
-| browser | Claude Sonnet 5.5 (high) | GPT-6.1 Terra (medium) | Sonnet: Arena Agent #3 and the highest OSWorld score of these models; Terra is positioned for computer use, but its safety report shows 13.75% unauthorized actions (Sol 1.25%), so it only runs local headless checks, never logged-in external sites |
+| feature | GPT-6.1 Sol (high / xhigh) | Claude Opus 5.5 (max / max) | Existing Opus route upgraded to max |
+| bugfix | Claude Opus 5.5 (max / max) | GPT-6.1 Sol (high / xhigh) | Existing Opus route upgraded to max |
+| review | Claude Opus 5.5 (max / max) | GPT-6.1 Sol (high / xhigh) | Existing Opus route upgraded to max |
+| architecture | Claude Opus 5.5 (max / max) | GPT-6.1 Sol (xhigh / xhigh) | Existing Opus route upgraded to max |
+| complex | Claude Opus 5.5 (max / max) | GPT-6.1 Sol (xhigh / xhigh) | Existing Opus route upgraded to max |
+| bounded | GPT-6.1 Sol (medium / high) | Claude Opus 5.5 (xhigh / xhigh) | Replaces Sonnet |
+| mechanical | GPT-6.1 Terra (low / medium) | Claude Opus 5.5 (xhigh / xhigh) | Replaces Haiku |
+| browser | Claude Opus 5.5 (xhigh / xhigh) | GPT-6.1 Terra (medium / high) | Replaces Sonnet; Terra is limited to local headless checks |
 
-Not routed automatically: **Claude Fable 5.1** is scored below Opus 5.5 at every effort and costs about 2× more, so it is only an explicit escalation profile for `complex`/`architecture`. **Opus max** adds 1 point over xhigh for 1.7× the cost and is not in `allowed_efforts`.
-
-**When quota is plentiful**, the author temporarily steps each kind up one effort level (feature Sol high / Opus high, bugfix and review Opus high, complex Opus xhigh / Sol xhigh, bounded Sol medium / Sonnet high) and reverts after the weekly reset. Note that per-task budget points do not scale with effort, so the quota check underestimates the real burn of upgraded tiers. Do not "upgrade" to Sonnet medium: it scores below Haiku xhigh.
+Efforts are shown as normal / hard. This is the user’s persistent policy: existing Opus task routes use max, while former Sonnet and Haiku task routes use Opus xhigh. Opus max is allowed for explicit selection. **Claude Fable 5.1** remains an explicit escalation for `complex`/`architecture`; task budgets do not scale with effort, so actual quota consumption may exceed the estimate.
 
 **Capacity factors used with this pairing:** `"capacity_factors": {"codex": 1, "claude": 1.5, "antigravity": 3}`
 
@@ -301,7 +330,7 @@ If you modified the code or local configuration (e.g. updated `routes.json` or `
 3. **Restart the Host Application**:
    If the host caches skill metadata in a daemon or desktop process, fully restart the host application.
 4. **Run Directly in Terminal (Instant)**:
-   The scripts reread `routes.json` on every execution, so `python3 scripts/route.py plan --kind feature --complexity normal` always reflects the latest configuration.
+   The scripts reread the local route file or example template on every execution, so `python3 scripts/route.py plan --kind feature --complexity normal` always reflects the latest configuration.
 
 ---
 
@@ -334,12 +363,12 @@ Please help me enable and configure Jev automatic task classification:
 
 #### Option 2: Manual Setup
 
-1. **Configure API Key** (hidden interactive prompt; verified against TypeSafe's model list, no inference call):
+1. **Configure a TypeSafe API key** after copying the template to `routes.json`. Choose TypeSafe in the hidden-input setup. The check uses the model list without calling inference.
    ```sh
    python3 scripts/setup_jev.py          # save a key
    python3 scripts/setup_jev.py --check  # re-verify the saved key
    ```
-   The key is stored at `~/.config/orca-model-routing/jev-credentials.json` (mode `0600`; honors `XDG_CONFIG_HOME`), never in the repository.
+   OpenRouter setup only verifies the credential. Jev classification requires TypeSafe. The key is stored at `~/.config/orca-model-routing/jev-credentials.json` (mode `0600`; honors `XDG_CONFIG_HOME`), never in the repository.
 2. **Enable in `routes.json`**: Set `"enabled": true` under `"jev"`:
    ```json
    "jev": { "enabled": true, "model": "jev-latest", "min_confidence": 0.5 }
@@ -355,9 +384,9 @@ If Jev's confidence is below `min_confidence`, or it answers `unmatched` (unclea
 
 ## Privacy & Security
 
-- **No Background Daemon**: Runs only when invoked; does not intercept normal chats.
+- **Worker Monitoring**. Routing runs on invocation. The optional guard monitors dispatches created by the router.
 - **Local Credentials**: Never commit API keys, token caches, or `routes.json` (ignored by Git).
-- **Quota Privacy**: Quota is read with `orca account list --json` (read-only) and reduced to status, timestamps, and usage numbers; account identities and raw receipts are never stored or printed.
+- **Quota Privacy**. Usage output is reduced to status, timestamps, quota figures, and short account digests. Plans can refresh usage locally and record quota and reminder state. Guard handoff files and logs may contain task text and worker output. Keep these files private.
 - **Third-Party Calls**: Only with Jev enabled and `--kind auto` is task text sent outside your machine (to TypeSafe). Without Jev, nothing leaves your machine except what Orca itself does.
 
 ## License

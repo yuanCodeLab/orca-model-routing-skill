@@ -18,13 +18,18 @@ This skill provides reusable task-routing guidance and scripts. Its checked-in [
 
 ## Routing behavior
 
-- Each task compares only its configured primary and alternate profiles. A quota-based alternate is an initial selection, not an automatic retry.
-- Current quota reads are bounded and read-only. Unknown, stale, malformed, or mismatched quota data is distinct from known insufficiency and follows the configured unknown-data policy.
-- Reserves and task budgets are configurable gates. With `reserve_scaling: prorated` (default), a reserve shrinks in proportion to the time left before its window resets; `fixed` keeps the full reserve. Optional `reset_horizon_minutes` caps the minutes-to-reset used in scoring for a provider that habitually resets before its stated window ends. Example values are illustrative and are not calibrated recommendations.
-- Browser and other tool capabilities must be independently verified before enabling a profile or alternate.
-- Prefer a primary and alternate in different account pools; two profiles of the same agent share one quota, so switching between them never helps.
-- For a review, prefer a reviewer from a different model family than the implementer.
-- Jev is optional and disabled in the example. Credential setup stores keys and verification status in private user configuration and never writes them into tracked routing files.
-- This skill runs only when invoked; it is not an Orca-wide interceptor or background service.
+- Automatic selection compares the configured primary and alternate. An explicit `--profile` can also select the task's escalation profile, subject to eligibility checks. Use `budget_multiplier` to scale a profile's task budget and `quota_cap_window` to require capacity in a provider sub-limit.
+- `primary_first` keeps an eligible primary at or above its weekly pace threshold. A pool override takes precedence over the global threshold. `prefer_primary` keeps an eligible primary whenever possible for that task.
+- Reserves reduce available quota. With `reserve_scaling: prorated`, the reserve decreases with the time left in the window. Use `fixed` to deduct the full amount. The optional `reset_horizon_minutes` caps the minutes used in scoring.
+- `session_headroom` sets a floor for available quota in the 5-hour window by pool, complexity, and optionally task. Near reset, the threshold is capped by the guard's projected burn until reset plus its floor. The task budget still applies.
+- Quota that is missing, stale, malformed, or inconsistent follows the unknown-data policy. A plan can request a rate-limited usage refresh. `plan --preview` reads existing data and skips the refresh and reminder-state write.
+- Use `browser_check` for local headless checks, `browser_flow` for local interaction flows, `browser_debug` for local diagnosis, and `browser_external` for external or signed-in sites. Treat `browser` as the legacy external kind when configured that way. Verify each assigned profile's tools and permissions. Leave unverified alternates disabled or unconfirmed.
+- Jev is optional and disabled in the template. Use TypeSafe credentials for automatic classification and keep credentials in private user configuration.
 
-See [README.md](README.md) for setup and privacy guidance.
+## Opt-in quota guard
+
+- `quota_policy.quota_guard` monitors dispatches started by this router in configured pools. An authorized handoff requires a viable candidate in another pool, a complete worker handoff report, confirmed exit of the old worker, and a fresh routing check. Keep the worker's context entry available until it settles.
+- Inspect monitoring and handoff status with `python3 scripts/quota_guard.py status`. Use `python3 scripts/quota_guard.py --dry-run` to inspect current predictions without starting a monitor or mutating worker state.
+- `restore_reminder` can flag when projected unused weekly quota supports restoring a configured scoring weight. Surface `first_in_window: true` to the user. Weight changes are manual.
+
+Run the unit suite with `python3 -m unittest discover -s tests -p 'test_*.py'`. See [README.md](README.md) for setup and privacy guidance.

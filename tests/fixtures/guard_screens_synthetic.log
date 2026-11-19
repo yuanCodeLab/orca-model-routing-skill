@@ -1,0 +1,59 @@
+--- running, input queued
+• Working (8s • esc to interrupt)
+›
+  tab to queue message
+--- idle, plain footer
+› Ask Codex to do anything
+  GPT-6.1-Sol high · ~/project · task
+  ? for shortcuts
+--- idle, context footer
+› Ask Codex to do anything
+  GPT-6.1-Sol high · ~/project · task
+  ? for shortcuts    85% context left
+--- idle, warnings
+› Ask Codex to do anything
+  GPT-6.1-Sol high · ~/project · task
+  ? for shortcuts    ⚠ 1 warning
+--- idle, blank row
+
+› Ask Codex to do anything
+  GPT-6.1-Sol high · ~/project · task
+  ? for shortcuts
+--- idle, prior output
+Sample response finished.
+› Ask Codex to do anything
+  GPT-6.1-Sol high · ~/project · task
+  ? for shortcuts
+--- empty during repaint
+--- running, second queued input
+Sample action in progress.
+• Working (8s • esc to interrupt)
+›
+  tab to queue message
+--- idle, no model footer
+› Ask Codex to do anything
+  ? for shortcuts
+--- idle, multiple footer rows
+› Ask Codex to do anything
+  GPT-6.1-Sol high · ~/project · task
+  Codex · ~/project · task
+  ? for shortcuts
+--- idle, earlier composer
+›
+Sample completed action.
+› Ask Codex to do anything
+  GPT-6.1-Sol high · ~/project · task
+  ? for shortcuts
+--- idle, spaced footer
+› Ask Codex to do anything
+  GPT-6.1-Sol high · ~/project · task
+  ? for shortcuts
+
+--- empty after clearing
+--- exited with stale UI
+› Ask Codex to do anything
+  GPT-6.1-Sol high · ~/project · task
+  ? for shortcuts
+user@host project %
+--- exited with shell only
+user@host project %

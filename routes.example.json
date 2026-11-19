@@ -3,18 +3,26 @@
   "decision_mode": "rules_only",
   "models": {
     "profile_a": {"agent": "codex", "model": "replace-with-model-id-a", "effort": "medium", "hard_effort": "high", "enabled": true},
-    "profile_b": {"agent": "claude", "model": "replace-with-model-id-b", "effort": "medium", "hard_effort": "high", "enabled": true}
+    "profile_b": {"agent": "claude", "model": "replace-with-model-id-b", "effort": "medium", "hard_effort": "high", "enabled": true},
+    "profile_external_alternate": {"_comment": "Enable only after verifying permissions for external or signed-in sites.", "agent": "claude", "model": "replace-with-external-model-id", "effort": "medium", "enabled": false},
+    "profile_browser": {"_comment": "For model IDs that encode effort, leave effort null.", "agent": "antigravity", "model": "replace-with-browser-model-id", "effort": null, "enabled": false},
+    "profile_escalation": {"_comment": "Multiply the task budget by budget_multiplier and require headroom in the named provider sub-limit.", "agent": "claude", "model": "replace-with-escalation-model-id", "effort": "high", "enabled": false, "budget_multiplier": 1.5, "quota_cap_window": "fableWeekly"}
   },
   "tasks": {
     "feature": {"primary": "profile_a", "alternate": "profile_b", "effort": "medium", "description": "Implement a feature"},
     "bugfix": {"primary": "profile_a", "alternate": "profile_b", "effort": "medium", "description": "Fix a defined defect"},
     "review": {"primary": "profile_a", "alternate": "profile_b", "effort": "medium", "read_only": true, "description": "Review code"},
     "architecture": {"primary": "profile_a", "alternate": "profile_b", "effort": "medium", "read_only": true, "description": "Analyze architecture"},
-    "complex": {"primary": "profile_a", "alternate": "profile_b", "effort": "low", "hard_effort": "high", "description": "Investigate a complex issue"},
+    "complex": {"primary": "profile_a", "alternate": "profile_b", "effort": "low", "hard_effort": "high", "escalation": "profile_escalation", "_comment": "Escalation is selectable explicitly with --profile and still passes quota checks.", "description": "Investigate a complex issue"},
     "bounded": {"primary": "profile_a", "alternate": "profile_b", "effort": "high", "description": "Complete a bounded implementation"},
     "mechanical": {"primary": "profile_a", "alternate": "profile_b", "effort": "low", "description": "Make a mechanical edit"},
-    "browser": {"primary": "profile_b", "alternate": "profile_a", "effort": "medium", "alternate_capability_confirmed": false, "description": "Verify page interactions with browser tools"}
+    "browser": {"_comment": "Legacy kind with the same capability boundary as browser_external.", "primary": "profile_b", "alternate": "profile_external_alternate", "alternate_capability_confirmed": false, "prefer_primary": true, "browser_boundary": "external_logged_in", "forbidden_models": ["replace-with-model-id-a"], "description": "Verify an external browser flow"},
+    "browser_check": {"primary": "profile_b", "alternate": "profile_a", "alternate_capability_confirmed": false, "prefer_primary": true, "browser_boundary": "local_headless", "description": "Run a local headless browser check"},
+    "browser_flow": {"_comment": "prefer_primary keeps an eligible primary even if the alternate scores higher. Verify tool access before enabling a profile.", "primary": "profile_browser", "alternate": "profile_b", "alternate_capability_confirmed": false, "prefer_primary": true, "browser_boundary": "local_headless", "description": "Verify a local browser workflow"},
+    "browser_debug": {"primary": "profile_b", "alternate": "profile_a", "alternate_capability_confirmed": false, "browser_boundary": "local_headless", "description": "Diagnose a local browser issue"},
+    "browser_external": {"_comment": "Verify the primary's permissions and capabilities for external or signed-in sites.", "primary": "profile_b", "alternate": "profile_external_alternate", "alternate_capability_confirmed": false, "prefer_primary": true, "browser_boundary": "external_logged_in", "forbidden_models": ["replace-with-model-id-a"], "description": "Verify an external browser flow"}
   },
+  "constraints": {"max_attempts_per_task": 2},
   "explicit_overrides": {"allowed_efforts": ["low", "medium", "high", "xhigh"]},
   "jev": {"enabled": false, "model": "jev-latest", "min_confidence": 0.5},
   "quota_policy": {
@@ -25,7 +33,41 @@
     "provider_keys": {"codex": "codex", "claude": "claude", "antigravity": "antigravity"},
     "capacity_factors": {"codex": 1, "claude": 1, "antigravity": 1},
     "reserves": {},
+    "_comment_reserve_scaling": "Prorated reserves shrink with time to reset. Fixed reserves deduct the full amount throughout the window.",
     "reserve_scaling": "prorated",
+    "primary_first": {
+      "_comment": "Keep an eligible primary when its weekly pace meets the pool override or the general threshold.",
+      "enabled": true,
+      "min_weekly_pace_ratio": 1.0,
+      "min_weekly_pace_ratio_by_pool": {"codex": 1.1}
+    },
+    "session_headroom": {
+      "_comment": "Require at least these available percentage points in the 5-hour window, subject to the near-reset cap and task budget.",
+      "enabled": true,
+      "pools": ["codex"],
+      "normal": 15,
+      "hard": 25,
+      "by_kind": {"browser_check": {"normal": 8, "hard": 12}}
+    },
+    "quota_guard": {
+      "_comment": "Opt in to monitor workers started by this router and allow a validated cross-pool handoff.",
+      "enabled": false,
+      "pools": ["codex"],
+      "poll_seconds": 60,
+      "default_burn_pp_per_min": {"session": 1.5, "weekly": 0.25},
+      "grace_minutes": 3,
+      "floor_pp": 5,
+      "delivery_fallback": {"enabled": false, "wait_seconds": 20}
+    },
+    "restore_reminder": {
+      "_comment": "Optionally report once per weekly window when projected unused quota supports restoring the target scoring weight.",
+      "enabled": false,
+      "agent": "claude",
+      "min_elapsed_fraction": 0.3,
+      "min_remaining_pp": 50,
+      "min_projected_unused_pp": 30,
+      "restore_capacity_factor": 2
+    },
     "unknown_policy": {"primary_without_reserve": "block"},
     "windows": {
       "session": {"expected_minutes": 300, "time_floor_minutes": 10, "weight": 0.5},

@@ -6,15 +6,18 @@ import json
 import os
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib import error, request
 
 CONFIG_HOME = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config'))
 PRIVATE_DIR = CONFIG_HOME / 'orca-model-routing'
 CREDENTIALS = PRIVATE_DIR / 'jev-credentials.json'
-# Only TypeSafe keys are supported: the classifier calls the TypeSafe Jev API.
+STATUS = PRIVATE_DIR / 'jev-status.json'
+ROUTES = Path(__file__).resolve().parents[1] / 'routes.json'
 ENDPOINTS = {
     'typesafe': 'https://api.typesafe.ai/v1/models',
+    'openrouter': 'https://openrouter.ai/api/v1/key',
 }
 
 
@@ -38,10 +41,16 @@ def verify(provider, key):
         raise ValueError('认证检查返回 HTTP %s；未显示服务端正文。' % exc.code) from None
     except (error.URLError, TimeoutError, OSError, json.JSONDecodeError):
         raise ValueError('认证检查连接失败或响应格式异常；未显示任何凭据。') from None
-    names = [m.get('name', '') for m in data.get('models', []) if isinstance(m, dict)]
-    if not any(n.startswith('jev') for n in names):
-        raise ValueError('模型目录未返回 Jev；不能确认该 Key 有可用的 Jev 访问。')
-    return {'authentication_verified': True, 'jev_catalog_available': True}
+    if provider == 'typesafe':
+        names = [m.get('name', '') for m in data.get('models', []) if isinstance(m, dict)]
+        if not any(n.startswith('jev') for n in names):
+            raise ValueError('模型目录未返回 Jev；不能确认该 Key 有可用的 Jev 访问。')
+        return {'authentication_verified': True, 'jev_catalog_available': True}
+    if not isinstance(data.get('data'), dict):
+        raise ValueError('API Key 检查响应异常。')
+    if data['data'].get('is_management_key') or data['data'].get('is_provisioning_key'):
+        raise ValueError('这是管理 Key，请使用可调用模型的普通 API Key。')
+    return {'authentication_verified': True, 'jev_inference_verified': False}
 
 
 def save_private(path, value):
@@ -65,6 +74,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true', help='Recheck saved credentials without printing them')
     args = parser.parse_args()
+    if not ROUTES.is_file():
+        print('请先将 routes.example.json 复制为本地 routes.json。')
+        return 1
     if args.check:
         if not CREDENTIALS.is_file():
             print('尚未保存 Jev API Key。')
@@ -72,24 +84,36 @@ def main():
         stored = json.loads(CREDENTIALS.read_text())
         provider, key = stored.get('provider'), stored.get('api_key')
         if provider not in ENDPOINTS or not key:
-            print('已保存的凭据不是 TypeSafe Key；请重新运行本脚本配置。')
+            print('已保存的 Jev 凭据无效，请重新配置。')
             return 1
     else:
         if not sys.stdin.isatty():
             print('请在本机交互终端运行；拒绝回显或通过参数接收 Key。')
             return 2
-        print('Jev API Key 配置（仅配置 TypeSafe 凭据，不启用自动路由）')
-        provider = 'typesafe'
+        print('Jev API Key 配置（仅配置凭据，不启用自动路由）')
+        print('1 = TypeSafe 官方 Key；2 = OpenRouter Key')
+        selected = input('请选择来源 [默认 1]：').strip() or '1'
+        if selected not in ['1', '2']:
+            print('未选择有效来源，配置已取消。')
+            return 2
+        provider = {'1': 'typesafe', '2': 'openrouter'}[selected]
         key = getpass.getpass('粘贴 API Key 后回车（输入隐藏）：').strip()
         if not key or any(c.isspace() for c in key):
             print('Key 为空或含空白，未保存。')
             return 2
     try:
+        config = json.loads(ROUTES.read_text())
         evidence = verify(provider, key)
+        stamp = datetime.now(timezone.utc).isoformat()
         if not args.check:
             save_private(CREDENTIALS, {'provider': provider, 'api_key': key})
+        save_private(STATUS, {'provider': provider, 'verified_at': stamp, **evidence})
+        config['jev'].update({'provider': provider, 'credential_file': str(CREDENTIALS),
+                              'key_configured': True, 'authentication_verified_at': stamp})
+        # Preserve enabled and decision_mode: storing a Key does not enable routing.
+        ROUTES.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n')
         print('API Key 已通过认证检查，并保存到本机用户私有目录（文件权限 0600）。')
-        print('来源：' + provider + '；Jev 自动路由是否启用仍由本地路由配置决定。')
+        print('来源：' + provider + '；自动路由状态：' + ('已启用' if config['jev']['enabled'] else '未启用'))
         print('这次没有调用 Jev 推理，也没有发送项目内容。')
         return 0
     except ValueError as exc:

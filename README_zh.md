@@ -26,7 +26,7 @@ flowchart LR
     Review --> Start["route.py start --expected-profile<br>(重新查询额度；选择变化则拒绝启动)"]
 ```
 
-> 基于额度选中备选只是**首次选择**，不是失败后的重试。脚本不会自动重试、切换账号；`plan` 阶段不会启动任何东西。
+> 首次派发可以按额度选中备选。`plan` 仅生成路由决策。启用额度守卫后，运行中的 dispatch 可以跨账户池交接。
 
 ---
 
@@ -180,14 +180,45 @@ Orca 本身没有用于此的全局规则设置（已在 Orca 1.4.219 中核实�
 | `quota_policy.task_budget_points` | normal / hard 任务在每个窗口至少需要的可派发点数；可用 `--budget-session` / `--budget-weekly` 单次覆盖 |
 | `quota_policy.capacity_factors` | 各 Agent 的打分相对权重；仅为示例，不是实测 token 容量 |
 | `quota_policy.windows` | `session` 与 `weekly` 窗口的预期长度、时间下限和权重 |
-| `quota_policy.unknown_policy.primary_without_reserve` | `block`（默认）或 `allow`：无预留的主选额度未知时是否仍可启动 |
+| `quota_policy.unknown_policy.primary_without_reserve` | `block`（模板值）或 `allow`：无预留的主选额度未知时是否仍可启动 |
 | `quota_policy.reset_horizon_minutes` | 可选，按 Agent 和窗口配置，例如 `{"codex": {"weekly": 4320}}`。适用于实际重置早于标称周期的服务：打分时用 min(距重置分钟, 该值) 代替标称的重置时间。窗口长度校验和按时间缩小的预留仍用真实值。按时重置的服务不要配置 |
 | `quota_policy.stale_after_seconds` | 超过该秒数的额度数据视为未知。Orca 对部分服务只隔几分钟刷新一次（实测 Codex 约 8–9 分钟），低于这个间隔会让它们经常被判为未知 |
+| `quota_policy.primary_first` | 主选额度合格且周额度节奏达到 `min_weekly_pace_ratio` 时保留主选。用 `min_weekly_pace_ratio_by_pool` 分账户池设置门槛 |
+| `quota_policy.session_headroom` | 按账户池和复杂度设置 5 小时窗口所需的最低可用额度，单位为百分点。用 `by_kind` 为指定任务覆盖门槛 |
+| `tasks.<kind>.prefer_primary` | 主选通过额度检查时优先使用，即使备选得分更高 |
+| `tasks.<kind>.escalation` | 用 `--profile` 显式选择升级档，仍须通过额度检查 |
+| `models.<profile>.budget_multiplier` / `quota_cap_window` | 调整档位的任务预算，并可要求模型专属额度子窗口也有足够余量 |
+| `quota_policy.quota_guard` / `restore_reminder` | 按需开启守卫监控和跨池交接，或设置恢复账户池评分权重的周额度提醒 |
 | `jev` | 可选的自动分类，见下文 |
 
 **建议**：主选与备选尽量放在**不同的账户池**（不同 `agent`）。同一账户池的两个档位读取的是同一份额度，比较结果永远是主选，主选不足时备选也必然不足，额度切换不会生效。
 
 示例中的预算、权重等数值仅作示意，并非经过校准的推荐值。
+
+---
+
+## 额度守卫和恢复提醒
+
+在 `quota_policy.quota_guard` 中开启守卫并指定要监控的账户池。由路由器启动的 worker 会接受 5 小时和周额度的消耗预测。已授权的跨池交接需要有额度合格的接手档、完整的交接报告、旧 worker 的退出证据，以及新一次路由复核。使用以下命令查看守卫状态和额度预测。
+
+```sh
+python3 scripts/quota_guard.py status
+python3 scripts/quota_guard.py --dry-run
+```
+
+扣除预留后，5 小时窗口的可用额度至少要达到任务预算与实际余量门槛中的较大值。临近重置时，门槛最多为重置前预计消耗加上守卫的余量底线。周额度预算仍须满足。
+
+临时调低账户池的评分权重时，可配置 `quota_policy.restore_reminder`。预计周额度富余达到配置条件时，将结果中的 `restore_reminder.first_in_window: true` 转告用户，由用户决定是否手动恢复权重。用 `plan --preview` 跳过额度刷新，并保留本周提醒机会。
+
+`browser_check` 用于本地无头检查，`browser_flow` 用于本地交互流程，`browser_debug` 用于本地诊断，`browser_external` 用于外部网站或已登录页面。模板中的旧任务类型 `browser` 与 `browser_external` 使用相同的能力边界。请为各任务分配获准执行该范围的档位，并在允许自动选中备选前核实其能力。
+
+## 运行测试
+
+```sh
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+测试使用 `tests/fixtures/` 中的合成路由配置和终端样本，以及临时状态目录。
 
 ---
 
@@ -253,18 +284,16 @@ Orca 本身没有用于此的全局规则设置（已在 Orca 1.4.219 中核实�
 
 | 任务 | 主选 | 备选 | 主要依据 |
 | :--- | :--- | :--- | :--- |
-| feature | GPT-6.1 Sol（medium） | Claude Opus 5.5（medium） | Sol 智能/价格比最好（46 分，$0.36）；Opus medium（48）高于 Sonnet high（41） |
-| bugfix | Claude Opus 5.5（medium，hard 用 high） | GPT-6.1 Sol（medium） | Opus 在 Arena 两个榜都是第 1；Sonnet 降到 medium 后明显变弱（AA 30） |
-| review | Claude Opus 5.5（medium） | GPT-6.1 Sol（high） | 审查用强模型，且与 feature 的实现者不同家族 |
-| architecture | Claude Opus 5.5（xhigh） | GPT-6.1 Sol（xhigh） | 只读、频率低；xhigh（57）只比 max（58）低 1 分，成本约 60% |
-| complex | Claude Opus 5.5（high，hard 用 xhigh） | GPT-6.1 Sol（high） | 最强的 agent 模型，不从 high 以下起步 |
-| bounded | GPT-6.1 Terra（medium） | Claude Haiku 5.5（xhigh） | Terra medium（38）高于 Sol low（35），成本接近；Haiku xhigh（34）高于 Sonnet medium（30），价格约 1/3 |
-| mechanical | GPT-6.1 Terra（low） | Claude Haiku 5.5（medium） | 最便宜且够用的档位；替换 GPT-6 Luna（low 档仅 10 分） |
-| browser | Claude Sonnet 5.5（high） | GPT-6.1 Terra（medium） | Sonnet 在 Arena Agent 排第 3，OSWorld 在这几个模型里最高；Terra 官方定位 computer use，但安全报告显示未授权操作 13.75%（Sol 1.25%），所以只做本机无头验证，不操作已登录的外部网站 |
+| feature | GPT-6.1 Sol（high / xhigh） | Claude Opus 5.5（max / max） | 原 Opus 路由升至 max |
+| bugfix | Claude Opus 5.5（max / max） | GPT-6.1 Sol（high / xhigh） | 原 Opus 路由升至 max |
+| review | Claude Opus 5.5（max / max） | GPT-6.1 Sol（high / xhigh） | 原 Opus 路由升至 max |
+| architecture | Claude Opus 5.5（max / max） | GPT-6.1 Sol（xhigh / xhigh） | 原 Opus 路由升至 max |
+| complex | Claude Opus 5.5（max / max） | GPT-6.1 Sol（xhigh / xhigh） | 原 Opus 路由升至 max |
+| bounded | GPT-6.1 Sol（medium / high） | Claude Opus 5.5（xhigh / xhigh） | 替换 Sonnet |
+| mechanical | GPT-6.1 Terra（low / medium） | Claude Opus 5.5（xhigh / xhigh） | 替换 Haiku |
+| browser | Claude Opus 5.5（xhigh / xhigh） | GPT-6.1 Terra（medium / high） | 替换 Sonnet；Terra 仅做本机无头验证 |
 
-不自动选用的：**Claude Fable 5.1** 各档分数都低于 Opus 5.5，成本约 2 倍，只作为 `complex`/`architecture` 的显式升级档。**Opus max** 比 xhigh 只高 1 分，成本约 1.7 倍，未列入 `allowed_efforts`。
-
-**额度充裕时**，作者会临时把各类任务升一级 effort（feature 用 Sol high / Opus high，bugfix 与 review 用 Opus high，complex 用 Opus xhigh / Sol xhigh，bounded 用 Sol medium / Sonnet high），周额度重置后再改回。注意每个任务的预算点不随 effort 放大，升档后额度检查会低估实际消耗。不要"升"到 Sonnet medium，它的分数比 Haiku xhigh 还低。
+表中档位依次为 normal / hard。这是用户选择的持久策略：原 Opus 任务使用 max，原 Sonnet 和 Haiku 任务使用 Opus xhigh；允许显式选择 Opus max。**Claude Fable 5.1** 仍仅作为 `complex`/`architecture` 的显式升级档；任务预算不随档位放大，实际额度消耗可能超过估算。
 
 **该配对使用的容量系数**：`"capacity_factors": {"codex": 1, "claude": 1.5, "antigravity": 3}`
 
@@ -337,12 +366,12 @@ Orca 本身没有用于此的全局规则设置（已在 Orca 1.4.219 中核实�
 
 #### 方式二：手动配置
 
-1. **配置密钥**（终端隐藏输入；只调用 TypeSafe 模型列表做校验，不发起推理）：
+1. **配置 TypeSafe 密钥**。先将模板复制为 `routes.json`，然后在隐藏输入的配置流程中选择 TypeSafe。校验只读取模型列表。
    ```sh
    python3 scripts/setup_jev.py          # 保存 Key
    python3 scripts/setup_jev.py --check  # 重新校验已保存的 Key
    ```
-   Key 保存在 `~/.config/orca-model-routing/jev-credentials.json`（权限 `0600`，遵循 `XDG_CONFIG_HOME`），不会写入仓库。
+   OpenRouter 配置只校验密钥。Jev 分类需要使用 TypeSafe。Key 保存在 `~/.config/orca-model-routing/jev-credentials.json`（权限 `0600`，遵循 `XDG_CONFIG_HOME`），不会写入仓库。
 2. **启用开关**：在 `routes.json` 中将 `"jev"` 的 `"enabled"` 改为 `true`：
    ```json
    "jev": { "enabled": true, "model": "jev-latest", "min_confidence": 0.5 }
@@ -358,9 +387,9 @@ Orca 本身没有用于此的全局规则设置（已在 Orca 1.4.219 中核实�
 
 ## 安全与隐私
 
-- **非常驻服务**：仅在被显式调用时执行，不会在后台常驻运行或拦截日常会话。
+- **Worker 监控**。路由脚本在被调用时执行。可选的额度守卫监控由路由脚本启动的 dispatch。
 - **凭据本地存储**：严禁提交 API Key、凭据或本地 `routes.json`（已加入 `.gitignore`）。
-- **只读配额查询**：通过 `orca account list --json`（只读）获取额度，仅保留状态、时间戳和用量数字，不保留、不输出账户身份或原始回执。
+- **额度隐私**。用量输出只保留状态、时间戳、额度数字和简短的账户摘要。计划可以刷新本机用量，并记录额度和提醒状态。守卫的交接文件和日志可能包含任务说明和 worker 输出，请妥善保管。
 - **第三方调用**：只有开启 Jev 并使用 `--kind auto` 时，任务文本才会发送到本机之外（TypeSafe）。不开启 Jev 时，除 Orca 自身行为外，没有数据离开本机。
 
 ## 许可证

@@ -1,0 +1,57 @@
+{
+  "_comment": "Synthetic quota and profile data for unit and subprocess tests.",
+  "decision_mode": "rules_only",
+  "jev": {"enabled": false},
+  "models": {
+    "sol": {"agent": "codex", "model": "test-sol", "effort": "medium", "hard_effort": "high", "enabled": true},
+    "sol_high": {"agent": "codex", "model": "test-sol", "effort": "high", "hard_effort": "xhigh", "enabled": true},
+    "opus": {"agent": "claude", "model": "test-opus", "effort": "medium", "hard_effort": "high", "enabled": true},
+    "opus_high": {"agent": "claude", "model": "test-opus", "effort": "high", "hard_effort": "high", "enabled": true},
+    "opus_xhigh": {"agent": "claude", "model": "test-opus", "effort": "xhigh", "hard_effort": "xhigh", "enabled": true},
+    "haiku_high": {"agent": "claude", "model": "test-haiku", "effort": "high", "hard_effort": "high", "enabled": true},
+    "sonnet_high": {"agent": "claude", "model": "test-sonnet", "effort": "high", "hard_effort": "high", "enabled": true},
+    "terra_medium": {"agent": "codex", "model": "test-terra", "effort": "medium", "hard_effort": "high", "enabled": true},
+    "terra_low": {"agent": "codex", "model": "test-terra", "effort": "low", "hard_effort": "medium", "enabled": true},
+    "gemini": {"agent": "antigravity", "model": "test-gemini-high", "effort": null, "enabled": true},
+    "fable_high": {"agent": "claude", "model": "test-fable", "effort": "high", "enabled": true, "budget_multiplier": 2, "quota_cap_window": "fableWeekly"}
+  },
+  "tasks": {
+    "feature": {"primary": "sol", "alternate": "opus_high", "description": "Implement a feature"},
+    "bugfix": {"primary": "opus_high", "alternate": "sol", "description": "Fix a defect"},
+    "review": {"primary": "opus_high", "alternate": "sol_high", "read_only": true, "description": "Review changes"},
+    "architecture": {"primary": "opus_high", "alternate": "opus", "escalation": "fable_high", "read_only": true, "description": "Assess architecture"},
+    "complex": {"primary": "opus_high", "alternate": "sol_high", "escalation": "fable_high", "description": "Investigate a complex issue"},
+    "bounded": {"primary": "terra_medium", "alternate": "haiku_high", "description": "Implement a bounded change"},
+    "mechanical": {"primary": "terra_low", "alternate": "haiku_high", "description": "Make a mechanical edit"},
+    "browser": {"primary": "sonnet_high", "alternate": "opus_high", "alternate_capability_confirmed": true, "prefer_primary": true, "browser_boundary": "external_logged_in", "forbidden_models": ["test-terra"], "deprecated_alias_of": "browser_external", "description": "Verify an external browser flow"},
+    "browser_check": {"primary": "sonnet_high", "alternate": "terra_medium", "alternate_capability_confirmed": true, "prefer_primary": true, "browser_boundary": "local_headless", "description": "Check a local page"},
+    "browser_flow": {"primary": "gemini", "alternate": "opus_xhigh", "alternate_capability_confirmed": true, "prefer_primary": true, "browser_boundary": "local_headless", "description": "Verify a local flow"},
+    "browser_debug": {"primary": "opus_xhigh", "alternate": "sol_high", "alternate_capability_confirmed": true, "browser_boundary": "local_headless", "description": "Debug a local browser issue"},
+    "browser_external": {"primary": "sonnet_high", "alternate": "opus_high", "alternate_capability_confirmed": true, "prefer_primary": true, "browser_boundary": "external_logged_in", "forbidden_models": ["test-terra"], "description": "Verify an external browser flow"}
+  },
+  "constraints": {"max_attempts_per_task": 2},
+  "explicit_overrides": {"allowed_efforts": ["low", "medium", "high", "xhigh", "max"]},
+  "quota_policy": {
+    "enabled": true,
+    "source": {"command": ["orca", "account", "list", "--json"], "timeout_seconds": 10, "max_output_bytes": 2097152},
+    "stale_after_seconds": 900,
+    "usage_refresh": {"enabled": true, "min_interval_seconds": 300, "timeout_seconds": 12, "fetching_wait_seconds": 5},
+    "guard_stale_takeover": {"enabled": true, "agents": ["claude"], "max_age_minutes": 60, "conservative_burn_pp_per_min": {"session": 1.5, "weekly": 0.25}, "plan_margin_minutes": 5, "recheck_margin_minutes": 1},
+    "provider_keys": {"codex": "codex", "claude": "claude", "antigravity": "antigravity"},
+    "capacity_factors": {"codex": 1, "claude": 5, "antigravity": 2},
+    "restore_reminder": {"enabled": true, "agent": "claude", "min_elapsed_fraction": 0.25, "min_remaining_pp": 40, "min_projected_unused_pp": 25, "restore_capacity_factor": 4},
+    "windows": {
+      "session": {"expected_minutes": 300, "weight": 0.5, "time_floor_minutes": 10},
+      "weekly": {"expected_minutes": 10080, "weight": 0.5, "time_floor_minutes": 60}
+    },
+    "reserves": {"claude": {"session": 10, "weekly": 5}},
+    "reserve_scaling": "prorated",
+    "task_budget_points": {"normal": {"session": 2, "weekly": 5}, "hard": {"session": 5, "weekly": 10}},
+    "session_headroom": {"enabled": true, "pools": ["codex"], "normal": 40, "hard": 60, "by_kind": {"bounded": 20, "mechanical": 20, "browser_check": 20}, "_comment": "Synthetic thresholds for session headroom tests."},
+    "unknown_policy": {"primary_without_reserve": "allow"},
+    "fast_mode": {"enabled": true, "agents": ["codex"], "usage_multiplier": 2, "min_weekly_pace_ratio": 1.3},
+    "primary_first": {"enabled": true, "min_weekly_pace_ratio": 1.3, "min_weekly_pace_ratio_by_pool": {"codex": 0}, "_comment": "Synthetic per-pool pace override."},
+    "codex_session_log": {"enabled": true, "resets_at_tolerance_seconds": 60, "max_files": 3, "tail_bytes": 262144, "max_line_bytes": 16384},
+    "quota_guard": {"enabled": true, "pools": ["codex"], "poll_seconds": 60, "default_burn_pp_per_min": {"session": 1.5, "weekly": 0.25}, "rate_window_minutes": 10, "rate_min_dt_minutes": 3, "rate_min_delta_pp": 2, "grace_minutes": 3, "floor_pp": 5, "handoff_spacing_minutes": 2, "delivery_fallback": {"enabled": true, "wait_seconds": 20}}
+  }
+}

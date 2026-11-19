@@ -12,3 +12,6 @@ venv/
 .env.*
 .audit_tmp/
 .omc/
+*.bak*
+tests/*_report_*.md
+tests/guard_screens6_sample.log
